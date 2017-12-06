@@ -17,6 +17,12 @@ import matplotlib.pyplot as plt
 import time
 import os
 
+import io
+import requests
+from PIL import Image
+from torch.nn import functional as F
+import cv2
+
 plt.ion()   # interactive mode
 
 # Data augmentation and normalization for training
@@ -62,13 +68,12 @@ def imshow(inp, title=None):
     plt.pause(0.001)  # pause a bit so that plots are updated
 
 
-# Get a batch of training data
-inputs, classes = next(iter(dataloaders['train']))
+## Get a batch of training data
+#inputs, classes = next(iter(dataloaders['train']))
 
-# Make a grid from batch
-out = torchvision.utils.make_grid(inputs)
-
-imshow(out, title=[class_names[x] for x in classes])
+## Make a grid from batch
+#out = torchvision.utils.make_grid(inputs)
+#imshow(out, title=[class_names[x] for x in classes])
 
 
 
@@ -196,7 +201,49 @@ optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
 #model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
 #                       num_epochs=25)
 
-model_ft = train_model(model_ft, criterion, optimizer_ft, num_epochs=25)
+model_ft = train_model(model_ft, criterion, optimizer_ft, num_epochs=100)
+
+# hook the feature extractor
+features_blobs = []
+def hook_feature(module, input, output):
+    features_blobs.append(output.data.cpu().numpy())
+
+# DenseNet final conv name is 'features'
+model_ft.features.register_forward_hook(hook_feature)
+
+# get the softmax weight
+params = list(model_ft.parameters())
+weight_softmax = np.squeeze(params[-2].data.cpu().numpy())
+
+def returnCAM(feature_conv, weight_softmax, class_idx):
+    # generate the class activation maps upsample to 256x256
+    size_upsample = (256, 256)
+    bz, nc, h, w = feature_conv.shape
+    output_cam = []
+    for idx in class_idx:
+        cam = weight_softmax[class_idx].dot(feature_conv.reshape((nc, h*w)))
+        cam = cam.reshape(h, w)
+        cam = cam - np.min(cam)
+        cam_img = cam / np.max(cam)
+        cam_img = np.uint8(255 * cam_img)
+        output_cam.append(cv2.resize(cam_img, size_upsample))
+    return output_cam
+
+
+h_x = F.softmax(logit).data.squeeze()
+probs, idx = h_x.sort(0, True)
+
+# generate class activation mapping for the top1 prediction
+CAMs = returnCAM(features_blobs[0], weight_softmax, [idx[0]])
+
+# render the CAM and output
+print('output CAM.jpg for the top1 prediction: %s'%classes[idx[0]])
+img = cv2.imread('test.jpg')
+height, width, _ = img.shape
+heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
+result = heatmap * 0.3 + img * 0.5
+cv2.imwrite('CAM.jpg', result)
+
 
 visualize_model(model_ft)
 
