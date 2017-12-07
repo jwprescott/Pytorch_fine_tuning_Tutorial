@@ -30,9 +30,12 @@ if USE_TENSORBOARD:
 
 ## If you want to use the GPU, set GPU_MODE TO 1 in config file
 
-use_gpu = GPU_MODE
-if use_gpu:
-    torch.cuda.set_device(CUDA_DEVICE)
+#use_gpu = GPU_MODE
+#if use_gpu:
+#    torch.cuda.set_device(CUDA_DEVICE)
+
+#use_gpu = torch.cuda.is_available()
+
 
 count=0
 
