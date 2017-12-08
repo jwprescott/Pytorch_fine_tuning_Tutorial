@@ -8,6 +8,9 @@
 # Best performance so far: use ImageNet mean, std; random horizontal flip for training
 # images, loss rate 0.1 per 7 epochs, 20 epochs, pneumonia vs no finding
 
+# TODO: Output all class activation maps for validation set
+# TODO: Calculate ROC curves and area under ROC
+
 from __future__ import print_function, division
 
 import torch
@@ -29,6 +32,7 @@ import requests
 from PIL import Image
 from torch.nn import functional as F
 import cv2
+
 
 plt.ion()   # interactive mode
 
@@ -107,7 +111,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
             if phase == 'train':
-                scheduler.step()
+                #scheduler.step()   # for lr_scheduler.StepLR
                 model.train(True)  # Set model to training mode
             else:
                 model.train(False)  # Set model to evaluate mode
@@ -155,29 +159,37 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 best_acc = epoch_acc
                 best_model_wts = model.state_dict()
                 
+            # Update optimizer leraning rate
+            if phase == 'val':
+                scheduler.step(epoch_loss, epoch)
+                
+            # TODO: Save checkpoints
+            
+                
             #============ TensorBoard logging ============#
             # (1) Log the scalar values
-            info = {
-                'loss': epoch_loss,
-                'accuracy': epoch_acc
-                }
-            
-            for tag, value in info.items():
-                logger.scalar_summary(tag, value, epoch)
+            if phase == 'val':
+                info = {
+                    'loss': epoch_loss,
+                    'accuracy': epoch_acc
+                    }
                 
-            # (2) Log values and gradients of the parameters (histogram)
-            for tag, value in model_ft.named_parameters():
-                tag = tag.replace('.', '/')
-                logger.histo_summary(tag, value.data.cpu().numpy(), epoch)
-                logger.histo_summary(tag+'/grad', value.grad.data.cpu().numpy(), epoch)
+                for tag, value in info.items():
+                    logger.scalar_summary(tag, value, epoch)
                     
-            ## (3) Log the images
-            #info = {
-                #'images': to_np(images.view(-1, 28, 28)[:10])
-                #}
-            
-            #for tag, images in info.items():
-                #logger.image_summary(tag, images, epoch)
+                # (2) Log values and gradients of the parameters (histogram)
+                for tag, value in model_ft.named_parameters():
+                    tag = tag.replace('.', '/')
+                    logger.histo_summary(tag, value.data.cpu().numpy(), epoch)
+                    logger.histo_summary(tag+'/grad', value.grad.data.cpu().numpy(), epoch)
+                        
+                ## (3) Log the images
+                #info = {
+                    #'images': to_np(images.view(-1, 28, 28)[:10])
+                    #}
+                
+                #for tag, images in info.items():
+                    #logger.image_summary(tag, images, epoch)
 
         print()
 
@@ -235,13 +247,19 @@ if use_gpu:
 criterion = nn.CrossEntropyLoss()
 
 # Observe that all parameters are being optimized
-optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
+#optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
+optimizer_ft = optim.Adam(model_ft.parameters())
 
 # Decay LR by a factor of 0.1 every 7 epochs
-exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+#exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, 'min', factor=0.1,
+                                                  patience=7, min_lr=0.5e-6)
 
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
-                       num_epochs=20)
+                       num_epochs=30)
+
+# Save final model
+torch.save(model_ft, 'model_ft.pt')
 
 #model_ft = train_model(model_ft, criterion, optimizer_ft, num_epochs=20)
 
