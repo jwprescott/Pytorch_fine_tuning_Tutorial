@@ -256,10 +256,13 @@ exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, 'min', factor=0.
                                                   patience=7, min_lr=0.5e-6)
 
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
-                       num_epochs=30)
+                       num_epochs=10)
 
 # Save final model
 torch.save(model_ft, 'model_ft.pt')
+
+# Load saved model
+#model_ft = torch.load('model_ft_10_epochs.pt')
 
 #model_ft = train_model(model_ft, criterion, optimizer_ft, num_epochs=20)
 
@@ -337,3 +340,61 @@ cv2.imwrite('CAM.jpg', result)
 
 #plt.ioff()
 #plt.show()
+
+
+# PREDICTION
+data_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_1000/val/images_infection/'
+data_not_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_1000/val/images_not_infection/'
+image_files = []
+diagnosis = []
+for file in os.listdir(data_infection_dir):
+    if file.endswith(".jpg"):
+        image_files.append(os.path.join(data_infection_dir, file))
+        diagnosis.append("images_infection")
+        
+for file in os.listdir(data_not_infection_dir):
+    if file.endswith(".jpg"):
+        image_files.append(os.path.join(data_not_infection_dir, file))
+        diagnosis.append("images_not_infection")
+
+true_dx = np.array([])
+true_dx_prob = np.array([])
+infection_dx_prob = np.array([])
+for i in range(0,len(image_files)):
+    img_pil = Image.open(image_files[i])
+
+    img_tensor = preprocess(img_pil)
+    img_variable = Variable(img_tensor.unsqueeze(0))
+    logit = model_ft(img_variable.cuda())
+
+    h_x = F.sigmoid(logit).data.squeeze()
+    probs, idx = h_x.sort(0, True)
+    
+    pred = class_names[idx[0]]
+    print(pred)
+    
+    if(diagnosis[i] == "images_infection"):
+        true_dx = np.append(true_dx,[0])
+        #true_dx_prob = np.append(true_dx_prob,[h_x[0]])
+    if(diagnosis[i] == "images_not_infection"):
+        true_dx = np.append(true_dx,[1])
+        #true_dx_prob = np.append(true_dx_prob,[h_x[1]])
+        
+    infection_dx_prob = np.append(infection_dx_prob,[h_x[0]])
+        
+# Compute and plot ROC curves
+fpr, tpr, _ = roc_curve(true_dx, infection_dx_prob)
+roc_auc = auc(fpr, tpr)
+
+plt.figure()
+lw = 2
+plt.plot(fpr, tpr, color='darkorange',
+         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic example')
+plt.legend(loc="lower right")
+plt.show()
