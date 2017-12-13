@@ -16,6 +16,7 @@ from shutil import copyfile
 from shutil import rmtree
 from PIL import Image
 import numpy as np
+import random
 
 DATA_DIR = "/home/ubuntu/Desktop/CXR8"
 OUT_DIR = "/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative"
@@ -23,12 +24,15 @@ OUT_DIR = "/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative"
 # Clean out, recreate output directories
 if os.path.exists(os.path.join(OUT_DIR,'images_infection')):
     rmtree(os.path.join(OUT_DIR,'images_infection'))
-os.makedirs(os.path.join(OUT_DIR,'images_infection'))
+os.makedirs(os.path.join(OUT_DIR,'train/images_infection'))
+os.makedirs(os.path.join(OUT_DIR,'val/images_infection'))
+os.makedirs(os.path.join(OUT_DIR,'test/images_infection'))
 
 if os.path.exists(os.path.join(OUT_DIR,'images_not_infection')):
     rmtree(os.path.join(OUT_DIR,'images_not_infection'))
-os.makedirs(os.path.join(OUT_DIR,'images_not_infection'))
-
+os.makedirs(os.path.join(OUT_DIR,'train/images_not_infection'))
+os.makedirs(os.path.join(OUT_DIR,'val/images_not_infection'))
+os.makedirs(os.path.join(OUT_DIR,'test/images_not_infection'))
 
 datafile = open(os.path.join(DATA_DIR,'Data_Entry_2017.csv'),'rt')
 
@@ -40,7 +44,7 @@ count_infection = 0
 count_not_infection = 0
 sum_m = 0
 sum_std = 0
-num_cases = 1000
+num_cases = 10
 l_infection = []
 l_not_infection = []
 for row in reader:
@@ -94,3 +98,173 @@ datafile.close()
 
 #total_m = sum_m / count_total
 #total_std = sum_std / count_total
+
+####################################################
+# Separate images into train, validation, and test datasets, without patient overlap
+#
+
+train_percent = 0.93
+val_percent = 0.05
+test_percent = 0.02
+
+#train_percent = 0.8
+#val_percent = 0.1
+#test_percent = 0.1
+
+file_infection = []
+file_not_infection = []
+pt_infection = []
+pt_not_infection = []
+
+flag_infection = 0
+
+datafile = open(os.path.join(DATA_DIR,'Data_Entry_2017.csv'),'rt')
+
+reader = csv.reader(datafile,delimiter=',')
+_ = next(reader)   #skip header
+
+debug_count = 0
+for row in reader:
+    flag_infection = 0
+    for dx in row[1].split('|'):
+        if dx == 'Pneumonia':
+            file_infection.append(row[0])
+            pt_infection.append(row[3])
+            flag_infection = 1
+            break
+    if not flag_infection:
+        file_not_infection.append(row[0])
+        pt_not_infection.append(row[3])
+    debug_count = debug_count + 1
+    #if debug_count > 1000:
+        #break
+
+datafile.close()
+
+# Find unique patients in datasets, intersection between datasets
+unique_pt_infection = list(set(pt_infection))
+unique_pt_not_infection = list(set(pt_not_infection))
+
+# Patients who have images without infection who also have images with infection
+intersect_pt_infection_not_infection = list(set.intersection(set(pt_infection),set(pt_not_infection)))
+
+# Patients who only have images without infection
+pt_not_infection_only = list(set(unique_pt_not_infection).symmetric_difference(unique_pt_infection))
+
+num_infection_pt_train = round(len(unique_pt_infection) * train_percent)
+num_infection_pt_val = round(len(unique_pt_infection) * val_percent)
+num_infection_pt_test = len(unique_pt_infection) - num_infection_pt_train - num_infection_pt_val
+
+# Percent of pneumonia images versus not pneumonia images
+percent_infection = len(file_infection) / (len(file_infection) + len(file_not_infection))
+
+# Only a small percent of patients have images with pneumonia (~ 1%), so make sure
+# these patients are adequately distributed between train, validation, and test sets
+infection_pt_train = unique_pt_infection[0:num_infection_pt_train]
+infection_pt_val = unique_pt_infection[num_infection_pt_train:
+                                           num_infection_pt_train + num_infection_pt_val]
+infection_pt_test = unique_pt_infection[-(num_infection_pt_test):]
+
+
+num_not_infection_pt_train = round(len(pt_not_infection_only) * train_percent)
+num_not_infection_pt_val = round(len(pt_not_infection_only) * val_percent)
+num_not_infection_pt_test = len(pt_not_infection_only) - num_not_infection_pt_train - num_not_infection_pt_val
+
+not_infection_pt_train = pt_not_infection_only[0:num_not_infection_pt_train]
+not_infection_pt_val = pt_not_infection_only[num_not_infection_pt_train:
+                                           num_not_infection_pt_train +
+                                           num_not_infection_pt_val]
+not_infection_pt_test = pt_not_infection_only[-(num_not_infection_pt_test):]
+
+
+pt_infection_image_file_train = []
+pt_not_infection_image_file_train = []
+pt_infection_image_file_val = []
+pt_not_infection_image_file_val = []
+pt_infection_image_file_test = []
+pt_not_infection_image_file_test = []
+
+for p in infection_pt_train:    
+    for i, x in enumerate(pt_infection):
+        if x == p:
+            pt_infection_image_file_train.append(file_infection[i])
+    for i, x in enumerate(pt_not_infection):
+        if x == p:
+            pt_not_infection_image_file_train.append(file_not_infection[i])
+            
+for p in not_infection_pt_train:    
+    for i, x in enumerate(pt_not_infection):
+        if x == p:
+            if not file_not_infection[i] in pt_not_infection_image_file_train:
+                pt_not_infection_image_file_train.append(file_not_infection[i])
+                
+for p in infection_pt_val:    
+    for i, x in enumerate(pt_infection):
+        if x == p:
+            pt_infection_image_file_val.append(file_infection[i])
+    for i, x in enumerate(pt_not_infection):
+        if x == p:
+            pt_not_infection_image_file_val.append(file_not_infection[i])
+            
+for p in not_infection_pt_val:    
+    for i, x in enumerate(pt_not_infection):
+        if x == p:
+            if not file_not_infection[i] in pt_not_infection_image_file_val:
+                pt_not_infection_image_file_val.append(file_not_infection[i])
+                
+for p in infection_pt_test:    
+    for i, x in enumerate(pt_infection):
+        if x == p:
+            pt_infection_image_file_test.append(file_infection[i])
+    for i, x in enumerate(pt_not_infection):
+        if x == p:
+            pt_not_infection_image_file_test.append(file_not_infection[i])
+            
+for p in not_infection_pt_test:    
+    for i, x in enumerate(pt_not_infection):
+        if x == p:
+            if not file_not_infection[i] in pt_not_infection_image_file_test:
+                pt_not_infection_image_file_test.append(file_not_infection[i])
+                
+# TODO: Make sure no overlap in patients between train, validation, and test sets,
+# in addition to making sure not file overlap.
+# for example:
+# if set.intersection(set(infection_pt_train),set(infection_pt_test)):
+#       print("The same patient is in both train and test sets")
+
+                
+for f in pt_infection_image_file_train:
+    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    rgbimg = Image.new("RGB", img.size)
+    rgbimg.paste(img)
+    rgbimg.save(os.path.join(OUT_DIR,'train/images_infection',f[:-4]+'.jpg'))
+    
+for f in pt_not_infection_image_file_train:
+    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    rgbimg = Image.new("RGB", img.size)
+    rgbimg.paste(img)
+    rgbimg.save(os.path.join(OUT_DIR,'train/images_not_infection',f[:-4]+'.jpg'))
+    
+for f in pt_infection_image_file_val:
+    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    rgbimg = Image.new("RGB", img.size)
+    rgbimg.paste(img)
+    rgbimg.save(os.path.join(OUT_DIR,'val/images_infection',f[:-4]+'.jpg'))
+    
+for f in pt_not_infection_image_file_val:
+    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    rgbimg = Image.new("RGB", img.size)
+    rgbimg.paste(img)
+    rgbimg.save(os.path.join(OUT_DIR,'val/images_not_infection',f[:-4]+'.jpg'))
+    
+for f in pt_infection_image_file_test:
+    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    rgbimg = Image.new("RGB", img.size)
+    rgbimg.paste(img)
+    rgbimg.save(os.path.join(OUT_DIR,'test/images_infection',f[:-4]+'.jpg'))
+    
+for f in pt_not_infection_image_file_test:
+    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    rgbimg = Image.new("RGB", img.size)
+    rgbimg.paste(img)
+    rgbimg.save(os.path.join(OUT_DIR,'test/images_not_infection',f[:-4]+'.jpg'))
