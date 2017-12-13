@@ -225,7 +225,33 @@ for p in not_infection_pt_test:
         if x == p:
             if not file_not_infection[i] in pt_not_infection_image_file_test:
                 pt_not_infection_image_file_test.append(file_not_infection[i])
-                
+
+
+print("Number of patients")
+print("Infection (Train, Validation, Test): " + str(num_infection_pt_train) +
+      ", " + str(num_infection_pt_val) + ", " + str(num_infection_pt_test))
+print("Not infection (Train, Validation, Test): " + str(num_not_infection_pt_train) +
+      ", " + str(num_not_infection_pt_val) + ", " + str(num_not_infection_pt_test))
+print("")
+print("Number of images")
+print("Infection (Train, Validation, Test): " + str(len(pt_infection_image_file_train)) +
+      ", " + str(len(pt_infection_image_file_val)) + ", " +
+      str(len(pt_infection_image_file_test)))
+print("Not infection (Train, Validation, Test): " + 
+      str(len(pt_not_infection_image_file_train)) + ", " + 
+      str(len(pt_not_infection_image_file_val)) + ", " + 
+      str(len(pt_not_infection_image_file_test)))
+print("")
+
+#Number of patients
+#Infection (Train, Validation, Test): 888, 48, 19
+#Not infection (Train, Validation, Test): 27828, 1496, 599
+
+#Number of images
+#Infection (Train, Validation, Test): 1276, 56, 21
+#Not infection (Train, Validation, Test): 103245, 5170, 2352
+
+
 # TODO: Make sure no overlap in patients between train, validation, and test sets,
 # in addition to making sure not file overlap.
 # for example:
