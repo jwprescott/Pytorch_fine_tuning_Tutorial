@@ -61,7 +61,7 @@ data_transforms = {
 }
 
 #data_dir = '/home/ubuntu/Desktop/torch-hemorrhage/images_curated'
-data_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_train_val'
+data_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative'
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
                   for x in ['train', 'val']}
@@ -256,7 +256,7 @@ exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, 'min', factor=0.
                                                   patience=7, min_lr=0.5e-6)
 
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
-                       num_epochs=10)
+                       num_epochs=300)
 
 # Save final model
 torch.save(model_ft, 'model_ft.pt')
