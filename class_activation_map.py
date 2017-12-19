@@ -14,7 +14,7 @@ LABELS_URL = 'https://s3.amazonaws.com/outcome-blog/imagenet/labels.json'
 IMG_URL = 'http://media.mlive.com/news_impact/photo/9933031-large.jpg'
 
 # networks such as googlenet, resnet, densenet already use global average pooling at the end, so CAM could be used directly.
-model_id = 1
+model_id = 3
 if model_id == 1:
     net = models.squeezenet1_1(pretrained=True)
     finalconv_name = 'features' # this is the last conv layer of the network
@@ -22,7 +22,8 @@ elif model_id == 2:
     net = models.resnet18(pretrained=True)
     finalconv_name = 'layer4'
 elif model_id == 3:
-    net = models.densenet161(pretrained=True)
+    #net = models.densenet161(pretrained=True)
+    net = models.densenet121(pretrained=True)
     finalconv_name = 'features'
 
 net.eval()

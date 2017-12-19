@@ -24,6 +24,7 @@ from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
 import time
 import os
+from shutil import rmtree, copyfile
 
 from pytorch_logger import Logger
 
@@ -32,6 +33,8 @@ import requests
 from PIL import Image
 from torch.nn import functional as F
 import cv2
+
+from sklearn.metrics import roc_curve, auc, f1_score, confusion_matrix
 
 
 plt.ion()   # interactive mode
@@ -60,8 +63,18 @@ data_transforms = {
     ]),
 }
 
+train_stats_file = 'train_stats.txt'
+val_stats_file = 'val_stats.txt'
+datafile = open(train_stats_file,'w')
+datafile.close()
+datafile = open(val_stats_file,'w')
+datafile.close()
+
+#datafile = open(os.path.join(DATA_DIR,'Data_Entry_2017.csv'),'rt')
+
 #data_dir = '/home/ubuntu/Desktop/torch-hemorrhage/images_curated'
 data_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative'
+#data_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced'
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
                   for x in ['train', 'val']}
@@ -97,6 +110,28 @@ def imshow(inp, title=None):
 logger = Logger('./logs')
 
 
+class_weights = torch.FloatTensor([0.015,0.985])
+#class_weights = torch.FloatTensor([0.1,0.9])
+
+#if use_gpu:
+    #class_weights = class_weights.cuda()
+    
+
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        copyfile(filename, 'model_best.pth.tar')
+        
+## To load checkpoint
+#checkpoint = torch.load('checkpoint.pth.tar')
+#start_epoch = checkpoint['epoch']
+#best_acc = checkpoint['best_acc']
+#model_ft = models.densenet121(pretrained=True)
+#num_ftrs = model_ft.classifier.in_features	# for densenet
+#model_ft.classifier = nn.Linear(num_ftrs, 1) # for densenet
+#model_ft = model_ft.cuda()
+#model_ft.load_state_dict(checkpoint['state_dict'])
+
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 #def train_model(model, criterion, optimizer, num_epochs=25):
     since = time.time()
@@ -118,26 +153,40 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
             running_loss = 0.0
             running_corrects = 0
+            running_labels = np.array([])
+            running_preds = np.array([])
+            running_outputs_sig = np.array([])
 
             # Iterate over data.
             for data in dataloaders[phase]:
                 # get the inputs
                 inputs, labels = data
+                #weights = torch.FloatTensor([class_weights[x] for x in labels]).unsqueeze(1)
+                weights = torch.FloatTensor([class_weights[x] for x in labels])
+                #labels = labels.float().unsqueeze(1)
+                #labels = labels.unsqueeze(1)
 
                 # wrap them in Variable
                 if use_gpu:
                     inputs = Variable(inputs.cuda())
                     labels = Variable(labels.cuda())
+                    weights = weights.cuda()
                 else:
                     inputs, labels = Variable(inputs), Variable(labels)
 
                 # zero the parameter gradients
                 optimizer.zero_grad()
+                
+                criterion.weight = weights
 
                 # forward
                 outputs = model(inputs)
-                _, preds = torch.max(outputs.data, 1)
-                loss = criterion(outputs, labels)
+                #_, preds = torch.max(outputs.data, 1)
+                outputs_sig = F.sigmoid(outputs).squeeze()
+                #outputs_sig = 1 - outputs_sig
+                preds = torch.round(outputs_sig).long()
+                #preds = (1 - torch.round(outputs_sig)).long()
+                loss = criterion(outputs_sig, labels.float())
 
                 # backward + optimize only if in training phase
                 if phase == 'train':
@@ -146,32 +195,74 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
                 # statistics
                 running_loss += loss.data[0]
-                running_corrects += torch.sum(preds == labels.data)
+                running_corrects += torch.sum(preds==labels).long().data.cpu().numpy()[0]
+                running_labels = np.concatenate([running_labels,labels.long().data.cpu().numpy()])
+                running_preds = np.concatenate([running_preds,preds.data.cpu().numpy()])
+                running_outputs_sig = np.concatenate([running_outputs_sig,outputs_sig.data.cpu().numpy()])
 
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects / dataset_sizes[phase]
+            
+            fpr, tpr, _ = roc_curve(running_labels, running_outputs_sig)
+            roc_auc = auc(fpr, tpr)
+            
+            tn, fp, fn, tp = confusion_matrix(running_labels,running_preds).ravel()
+            
+            sens = tp / (tp + fn)
+            spec = tn / (tn + fp)
+            ppv = tp / (tp + fp)
+            npv = tn / (tn + fn)
+            fpr = fp / (fp + tn)
+            fnr = fn / (tp + fn)
+            fdr = fp / (tp + fp)
+            
+            f1_binary = f1_score(running_labels, running_preds, pos_label = 1,
+                          average = 'binary')
+            f1_weighted = f1_score(running_labels, running_preds, pos_label = 1,
+                          average = 'weighted')
 
-            print('{} Loss: {:.4f} Acc: {:.4f}'.format(
-                phase, epoch_loss, epoch_acc))
+            print('{}, Loss: {:.4f}, Acc: {:.4f}, AUC: {:.4f}, Sens: {:.4f}, Spec: {:.4f}, PPV: {:.4f}, NPV: {:.4f}, FPR: {:.4f}, FNR: {:.4f}, FDR: {:.4f}, F1 binary: {:.4f}, F1 weighted: {:.4f}'.format(
+                phase, epoch_loss, epoch_acc, roc_auc, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
 
-            # deep copy the model
-            if phase == 'val' and epoch_acc > best_acc:
-                best_acc = epoch_acc
-                best_model_wts = model.state_dict()
+            # Save checkpoints
+            #if phase == 'val' and epoch_acc > best_acc:
+                #best_acc = epoch_acc
+                #best_model_wts = model.state_dict()
+            if phase == 'val':
+                is_best = epoch_acc > best_acc
+                best_acc = max(epoch_acc, best_acc)
+                if is_best:
+                    best_model_wts = model.state_dict()
+                    
+                save_checkpoint({
+                    'epoch': epoch + 1,
+                    #'arch': args.arch,
+                    'state_dict': model.state_dict(),
+                    'best_acc': best_acc,
+                    }, is_best)
                 
             # Update optimizer leraning rate
             if phase == 'val':
                 scheduler.step(epoch_loss, epoch)
                 
-            # TODO: Save checkpoints
-            
-                
-            #============ TensorBoard logging ============#
+            #============ Logging ============#
             # (1) Log the scalar values
+            if phase == 'train':
+                info = {
+                    'train_loss': epoch_loss,
+                    'train_accuracy': epoch_acc
+                    }
+                
+                for tag, value in info.items():
+                    logger.scalar_summary(tag, value, epoch)
+                    
+                with open(train_stats_file,'a') as datafile:
+                    datafile.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (epoch, epoch_loss, epoch_acc, roc_auc, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
+                                        
             if phase == 'val':
                 info = {
-                    'loss': epoch_loss,
-                    'accuracy': epoch_acc
+                    'val_loss': epoch_loss,
+                    'val_accuracy': epoch_acc
                     }
                 
                 for tag, value in info.items():
@@ -182,8 +273,31 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                     tag = tag.replace('.', '/')
                     logger.histo_summary(tag, value.data.cpu().numpy(), epoch)
                     logger.histo_summary(tag+'/grad', value.grad.data.cpu().numpy(), epoch)
+                    
+                # (3) Write loss and accuracy to file
+                with open(val_stats_file,'a') as datafile:
+                    datafile.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (epoch, epoch_loss, epoch_acc, roc_auc, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
+                    
+                # (4) Output ROC curve               
+                fpr, tpr, _ = roc_curve(running_labels, running_outputs_sig)
+                roc_auc = auc(fpr, tpr)
+
+                plt.figure()
+                lw = 2
+                plt.plot(fpr, tpr, color='darkorange',
+                        lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+                plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+                plt.xlim([0.0, 1.0])
+                plt.ylim([0.0, 1.05])
+                plt.xlabel('False Positive Rate')
+                plt.ylabel('True Positive Rate')
+                plt.title('Receiver operating characteristic example')
+                plt.legend(loc="lower right")
+                #plt.show()
+                plt.savefig('ROC_{}.png'.format(epoch),bbox_inches='tight')
+                plt.close()
                         
-                ## (3) Log the images
+                ## (5) Log the images
                 #info = {
                     #'images': to_np(images.view(-1, 28, 28)[:10])
                     #}
@@ -231,32 +345,51 @@ def visualize_model(model, num_images=6):
             if images_so_far == num_images:
                 return
 
+# TODO: change outputs to 1, use BCELoss and create weights for all batches
 
 #model_ft = models.resnet18(pretrained=True)
 model_ft = models.densenet121(pretrained=True)
 #num_ftrs = model_ft.fc.in_features	# for resnet
 #model_ft.fc = nn.Linear(num_ftrs, 2)	# for resnet
 num_ftrs = model_ft.classifier.in_features	# for densenet
-model_ft.classifier = nn.Linear(num_ftrs, 2) # for densenet
+#model_ft.classifier = nn.Linear(num_ftrs, 2) # for densenet
+model_ft.classifier = nn.Linear(num_ftrs, 1) # for densenet
+#model_ft.add_module('Sigmoid',nn.Sigmoid())
+#model_ft.add_module('LogSigmoid',nn.LogSigmoid())
+
 
 
 if use_gpu:
     model_ft = model_ft.cuda()
     #model_ft = torch.nn.DataParallel(model_ft).cuda()
 
-criterion = nn.CrossEntropyLoss()
+# Use WEIGHTED BINARY CROSS ENTROPY, with SIGMOID NONLINEARITY applied to fully
+# connected output layer
+
+#For example, this is quite easy to do with neural networks as you just modify your
+#backpropogation algorithm to feed back the gradient of your new loss function. If you use
+#the nn package in torch [torch/nn] then you simply add an nn.LogSigmoid module onto the
+#end of the network and change the error criterion to nn.BCECriterion (binary cross
+#entropy).
+
+
+#criterion = nn.CrossEntropyLoss()
+criterion = nn.BCELoss()
+#criterion = nn.BCEWithLogitsLoss()
 
 # Observe that all parameters are being optimized
 #optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
 optimizer_ft = optim.Adam(model_ft.parameters())
 
 # Decay LR by a factor of 0.1 every 7 epochs
-#exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, 'min', factor=0.1,
                                                   patience=7, min_lr=0.5e-6)
 
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
                        num_epochs=300)
+#model_ft = train_model(model_ft, criterion, optimizer_ft, num_epochs=50)
+
+
 
 # Save final model
 torch.save(model_ft, 'model_ft.pt')
@@ -277,63 +410,111 @@ model_ft.features.register_forward_hook(hook_feature)
 
 # get the softmax weight
 params = list(model_ft.parameters())
-weight_softmax = np.squeeze(params[-2].data.cpu().numpy())
+#weight_softmax = np.squeeze(params[-2].data.cpu().numpy())
+weight_softmax = params[-2].data.cpu().numpy()
 
 def returnCAM(feature_conv, weight_softmax, class_idx):
     # generate the class activation maps upsample to 256x256
     size_upsample = (1024, 1024)
     bz, nc, h, w = feature_conv.shape
     output_cam = []
-    for idx in class_idx:
-        cam = weight_softmax[class_idx].dot(feature_conv.reshape((nc, h*w)))
-        cam = cam.reshape(h, w)
-        cam = cam - np.min(cam)
-        cam_img = cam / np.max(cam)
-        cam_img = np.uint8(255 * cam_img)
-        output_cam.append(cv2.resize(cam_img, size_upsample))
+    #for idx in class_idx:
+        #cam = weight_softmax[class_idx].dot(feature_conv.reshape((nc, h*w)))
+        #cam = cam.reshape(h, w)
+        #cam = cam - np.min(cam)
+        #cam_img = cam / np.max(cam)
+        #cam_img = np.uint8(255 * cam_img)
+        #output_cam.append(cv2.resize(cam_img, size_upsample))
+    cam = weight_softmax.dot(feature_conv.reshape((nc, h*w)))
+    cam = cam.reshape(h, w)
+    cam = cam - np.min(cam)
+    cam_img = cam / np.max(cam)
+    cam_img = np.uint8(255 * cam_img)
+    output_cam.append(cv2.resize(cam_img, size_upsample))
     return output_cam
 
-normalize = transforms.Normalize(
-   mean=[0.485, 0.456, 0.406],
-   std=[0.229, 0.224, 0.225]
-)
 preprocess = transforms.Compose([
    transforms.Resize((224,224)),
    transforms.ToTensor(),
-   normalize
+   transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-#img_pil = Image.open(os.path.join(data_dir,'val/images_infection/00000091_004.jpg'))
-img_pil = Image.open('/home/ubuntu/Desktop/torch-cxr8/images_100/val/images_infection/00000091_004.jpg')
-img_pil.save('00000091_004.jpg')
-
-img_tensor = preprocess(img_pil)
-img_variable = Variable(img_tensor.unsqueeze(0))
-logit = model_ft(img_variable.cuda())
-
-h_x = F.sigmoid(logit).data.squeeze()
-probs, idx = h_x.sort(0, True)
 
 
-# output the prediction
-for i in range(0, 2):
-    print('{:.3f} -> {}'.format(probs[i], class_names[idx[i]]))
+data_test_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced/test'
+data_test_outdir = '/home/ubuntu/Projects/virtualenv/pytorch_densenet/Pytorch_fine_tuning_Tutorial/test_out'
+
+## DEBUG
+#test_img_1 = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced/test/0_images_not_infection/00026825_005.jpg'
+#test_img_2 = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced/test/0_images_not_infection/00027048_000.jpg'
+
+#img_file = test_img_2
+
+#img = Image.open(img_file)
+#img.save('test_img.jpg')
+#img_tensor = preprocess(img)
+#img_variable = Variable(img_tensor.unsqueeze(0))
+#logit = model_ft(img_variable.cuda())
+
+for dx in class_names:
+    if os.path.exists(os.path.join(data_test_outdir,dx)):
+        rmtree(os.path.join(data_test_outdir,dx))
+    os.makedirs(os.path.join(data_test_outdir,dx))
+    for f in os.listdir(os.path.join(data_test_dir,dx)):
+        features_blobs = []
+        img = Image.open(os.path.join(data_test_dir,dx,f))
+        img.save(os.path.join(data_test_outdir,dx,f))
+        img_tensor = preprocess(img)
+        img_variable = Variable(img_tensor.unsqueeze(0))
+        logit = model_ft(img_variable.cuda())
+
+        h_x = F.sigmoid(logit).data.squeeze()
+        class_idx = torch.round(h_x).int().cpu().numpy()[0]
+        
+        CAMs = returnCAM(features_blobs[0], weight_softmax, [class_idx])
+
+        # render the CAM and output
+        #print('output CAM.jpg for the top1 prediction: %s'%classes[idx[0]])
+        img = cv2.imread(os.path.join(data_test_outdir,dx,f))
+        height, width, _ = img.shape
+        heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
+        result = heatmap * 0.3 + img * 0.5
+        cv2.imwrite(os.path.join(data_test_outdir,dx,f), result)
+
+##img_pil = Image.open(os.path.join(data_dir,'val/images_infection/00000091_004.jpg'))
+#img_pil = Image.open('/home/ubuntu/Desktop/torch-cxr8/images_100/val/images_infection/00000091_004.jpg')
+#img_pil.save('00000091_004.jpg')
+
+#img_tensor = preprocess(img_pil)
+#img_variable = Variable(img_tensor.unsqueeze(0))
+#logit = model_ft(img_variable.cuda())
+
+#h_x = F.sigmoid(logit).data.squeeze()
+#class_idx = torch.round(h_x).int().cpu().numpy()[0]
+##probs, idx = h_x.sort(0, True)
+
+
+## output the prediction
+##for i in range(0, 2):
+    ##print('{:.3f} -> {}'.format(probs[i], class_names[idx[i]]))
+
+#print('{:.3f} -> {}'.format(h_x.cpu().numpy()[0], class_names[class_idx]))
     
-#if use_gpu:
-                #ax.set_title('predicted: {}'.format(class_names[Variable(preds.cuda()).cpu().data.numpy()[j][0]]))
-            #else:
-                #ax.set_title('predicted: {}'.format(class_names[preds[j]]))
+##if use_gpu:
+                ##ax.set_title('predicted: {}'.format(class_names[Variable(preds.cuda()).cpu().data.numpy()[j][0]]))
+            ##else:
+                ##ax.set_title('predicted: {}'.format(class_names[preds[j]]))
 
-# generate class activation mapping for the top1 prediction
-CAMs = returnCAM(features_blobs[0], weight_softmax, [idx[0]])
+## generate class activation mapping for the top1 prediction
+#CAMs = returnCAM(features_blobs[0], weight_softmax, [class_idx])
 
-# render the CAM and output
-#print('output CAM.jpg for the top1 prediction: %s'%classes[idx[0]])
-img = cv2.imread('00000091_004.jpg')
-height, width, _ = img.shape
-heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
-result = heatmap * 0.3 + img * 0.5
-cv2.imwrite('CAM.jpg', result)
+## render the CAM and output
+##print('output CAM.jpg for the top1 prediction: %s'%classes[idx[0]])
+#img = cv2.imread('00000091_004.jpg')
+#height, width, _ = img.shape
+#heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
+#result = heatmap * 0.3 + img * 0.5
+#cv2.imwrite('CAM.jpg', result)
 
 
 #visualize_model(model_ft)
@@ -343,8 +524,8 @@ cv2.imwrite('CAM.jpg', result)
 
 
 # PREDICTION
-data_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_1000/val/images_infection/'
-data_not_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_1000/val/images_not_infection/'
+data_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative/test/images_infection/'
+data_not_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative/test/images_not_infection/'
 image_files = []
 diagnosis = []
 for file in os.listdir(data_infection_dir):
@@ -368,10 +549,10 @@ for i in range(0,len(image_files)):
     logit = model_ft(img_variable.cuda())
 
     h_x = F.sigmoid(logit).data.squeeze()
-    probs, idx = h_x.sort(0, True)
+    class_idx = torch.round(h_x).int().cpu().numpy()[0]
     
-    pred = class_names[idx[0]]
-    print(pred)
+    pred = class_names[class_idx]
+    print('{:.3f} -> {}'.format(h_x.cpu().numpy()[0], pred))
     
     if(diagnosis[i] == "images_infection"):
         true_dx = np.append(true_dx,[0])

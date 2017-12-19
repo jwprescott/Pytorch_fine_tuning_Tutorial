@@ -205,8 +205,17 @@ preds = (1-torch.round(outputs_sig)).long()
 loss = criterion(outputs_sig, labels.float())
 running_loss = 0.0
 running_corrects = 0
+running_labels = np.array([])
+running_preds = np.array([])
+running_outputs_sig = np.array([])
 running_loss += loss.data[0]
 running_corrects += torch.sum(preds==labels).long().data.cpu().numpy()[0]
+#running_labels.append(labels.long().data.cpu().numpy())
+#running_preds.append(preds.data.cpu().numpy())
+#running_outputs_sig.append(outputs_sig.data.cpu().numpy())
+running_labels = np.concatenate([running_labels,labels.long().data.cpu().numpy()])
+running_preds = np.concatenate([running_preds,preds.data.cpu().numpy()])
+running_outputs_sig = np.concatenate([running_outputs_sig,outputs_sig.data.cpu().numpy()])
 epoch_loss = running_loss / dataset_sizes[phase]
 epoch_acc = running_corrects/dataset_sizes[phase]
 print('{} Loss: {:.4f} Acc: {:.4f}'.format(
