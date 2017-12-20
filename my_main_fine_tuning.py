@@ -232,8 +232,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
             f1_weighted = f1_score(running_labels, running_preds, pos_label = 1,
                           average = 'weighted')
 
-            print('{}, Loss: {:.4f}, Acc: {:.4f}, AUC: {:.4f}, Sens: {:.4f}, Spec: {:.4f}, PPV: {:.4f}, NPV: {:.4f}, FPR: {:.4f}, FNR: {:.4f}, FDR: {:.4f}, F1 binary: {:.4f}, F1 weighted: {:.4f}'.format(
-                phase, epoch_loss, epoch_acc, roc_auc, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
+            print('{}, Loss: {:.4f}, Acc: {:.4f}, AUC: {:.4f}, TP: {}, FP: {}, TN: {}, FN: {}, Sens: {:.4f}, Spec: {:.4f}, PPV: {:.4f}, NPV: {:.4f}, FPR: {:.4f}, FNR: {:.4f}, FDR: {:.4f}, F1 binary: {:.4f}, F1 weighted: {:.4f}'.format(
+                phase, epoch_loss, epoch_acc, roc_auc, tp, fp, tn, fn, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
 
             # Save checkpoints
             #if phase == 'val' and epoch_acc > best_acc:
@@ -268,7 +268,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                     logger.scalar_summary(tag, value, epoch)
                     
                 with open(train_stats_file,'a') as datafile:
-                    datafile.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (epoch, epoch_loss, epoch_acc, roc_auc, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
+                    datafile.write("%d\t%f\t%f\t%f\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (epoch, epoch_loss, epoch_acc, roc_auc, tp, fp, tn, fn, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
                                         
             if phase == 'val':
                 info = {
