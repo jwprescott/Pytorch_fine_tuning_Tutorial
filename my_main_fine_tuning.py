@@ -63,13 +63,6 @@ data_transforms = {
     ]),
 }
 
-train_stats_file = 'train_stats.txt'
-val_stats_file = 'val_stats.txt'
-datafile = open(train_stats_file,'w')
-datafile.close()
-datafile = open(val_stats_file,'w')
-datafile.close()
-
 #datafile = open(os.path.join(DATA_DIR,'Data_Entry_2017.csv'),'rt')
 
 #data_dir = '/home/ubuntu/Desktop/torch-hemorrhage/images_curated'
@@ -85,6 +78,24 @@ dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
 class_names = image_datasets['train'].classes
 
 use_gpu = torch.cuda.is_available()
+
+# set number of GPU device used {0,1,2,3}; that way can run program with different parameters
+# on different GPUs at the same time
+gpu_num = 1
+
+# Create output dir and output files based on GPU number
+output_dir = 'output_{}'.format(gpu_num)
+
+if os.path.exists(output_dir):
+    rmtree(output_dir)
+os.makedirs(output_dir)
+
+train_stats_file = os.path.join(output_dir,'train_stats.txt')
+val_stats_file = os.path.join(output_dir,'val_stats.txt')
+datafile = open(train_stats_file,'w')
+datafile.close()
+datafile = open(val_stats_file,'w')
+datafile.close()
 
 def imshow(inp, title=None):
     """Imshow for Tensor."""
@@ -107,20 +118,20 @@ def imshow(inp, title=None):
 #imshow(out, title=[class_names[x] for x in classes])
 
 # Setup logging
-logger = Logger('./logs')
+logger = Logger(os.path.join(output_dir,'logs'))
 
 
 class_weights = torch.FloatTensor([0.015,0.985])
 #class_weights = torch.FloatTensor([0.1,0.9])
 
 #if use_gpu:
-    #class_weights = class_weights.cuda()
+    #class_weights = class_weights.cuda(gpu_num)
     
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-    torch.save(state, filename)
+def save_checkpoint(state, is_best, output_dir, filename='checkpoint.pth.tar'):
+    torch.save(state, os.path.join(output_dir,filename))
     if is_best:
-        copyfile(filename, 'model_best.pth.tar')
+        copyfile(filename, os.path.join(output_dir,'model_best.pth.tar'))
         
 ## To load checkpoint
 #checkpoint = torch.load('checkpoint.pth.tar')
@@ -129,7 +140,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 #model_ft = models.densenet121(pretrained=True)
 #num_ftrs = model_ft.classifier.in_features	# for densenet
 #model_ft.classifier = nn.Linear(num_ftrs, 1) # for densenet
-#model_ft = model_ft.cuda()
+#model_ft = model_ft.cuda(gpu_num)
 #model_ft.load_state_dict(checkpoint['state_dict'])
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
@@ -168,9 +179,9 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
                 # wrap them in Variable
                 if use_gpu:
-                    inputs = Variable(inputs.cuda())
-                    labels = Variable(labels.cuda())
-                    weights = weights.cuda()
+                    inputs = Variable(inputs.cuda(gpu_num))
+                    labels = Variable(labels.cuda(gpu_num))
+                    weights = weights.cuda(gpu_num)
                 else:
                     inputs, labels = Variable(inputs), Variable(labels)
 
@@ -239,7 +250,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                     #'arch': args.arch,
                     'state_dict': model.state_dict(),
                     'best_acc': best_acc,
-                    }, is_best)
+                    }, is_best, output_dir)
                 
             # Update optimizer leraning rate
             if phase == 'val':
@@ -294,7 +305,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 plt.title('Receiver operating characteristic example')
                 plt.legend(loc="lower right")
                 #plt.show()
-                plt.savefig('ROC_{}.png'.format(epoch),bbox_inches='tight')
+                plt.savefig(os.path.join(output_dir,'ROC_{}.png'.format(epoch)),bbox_inches='tight')
                 plt.close()
                         
                 ## (5) Log the images
@@ -324,7 +335,7 @@ def visualize_model(model, num_images=6):
     for i, data in enumerate(dataloaders['val']):
         inputs, labels = data
         if use_gpu:
-            inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
+            inputs, labels = Variable(inputs.cuda(gpu_num)), Variable(labels.cuda(gpu_num))
         else:
             inputs, labels = Variable(inputs), Variable(labels)
 
@@ -336,7 +347,7 @@ def visualize_model(model, num_images=6):
             ax = plt.subplot(num_images//2, 2, images_so_far)
             ax.axis('off')
             if use_gpu:
-                ax.set_title('predicted: {}'.format(class_names[Variable(preds.cuda()).cpu().data.numpy()[j][0]]))
+                ax.set_title('predicted: {}'.format(class_names[Variable(preds.cuda(gpu_num)).cpu().data.numpy()[j][0]]))
             else:
                 ax.set_title('predicted: {}'.format(class_names[preds[j]]))
 
@@ -347,21 +358,13 @@ def visualize_model(model, num_images=6):
 
 # TODO: change outputs to 1, use BCELoss and create weights for all batches
 
-#model_ft = models.resnet18(pretrained=True)
 model_ft = models.densenet121(pretrained=True)
-#num_ftrs = model_ft.fc.in_features	# for resnet
-#model_ft.fc = nn.Linear(num_ftrs, 2)	# for resnet
 num_ftrs = model_ft.classifier.in_features	# for densenet
-#model_ft.classifier = nn.Linear(num_ftrs, 2) # for densenet
 model_ft.classifier = nn.Linear(num_ftrs, 1) # for densenet
-#model_ft.add_module('Sigmoid',nn.Sigmoid())
-#model_ft.add_module('LogSigmoid',nn.LogSigmoid())
-
-
 
 if use_gpu:
-    model_ft = model_ft.cuda()
-    #model_ft = torch.nn.DataParallel(model_ft).cuda()
+    model_ft = model_ft.cuda(gpu_num)
+    #model_ft = torch.nn.DataParallel(model_ft).cuda(gpu_num)
 
 # Use WEIGHTED BINARY CROSS ENTROPY, with SIGMOID NONLINEARITY applied to fully
 # connected output layer
@@ -382,8 +385,8 @@ criterion = nn.BCELoss()
 optimizer_ft = optim.Adam(model_ft.parameters())
 
 # Decay LR by a factor of 0.1 every 7 epochs
-exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, 'min', factor=0.1,
-                                                  patience=7, min_lr=0.5e-6)
+exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, mode='min', factor=0.1,
+                                                  patience=10, verbose=True)
 
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
                        num_epochs=300)
@@ -392,7 +395,7 @@ model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
 
 
 # Save final model
-torch.save(model_ft, 'model_ft.pt')
+torch.save(model_ft, os.path.join(output_dir,'model_ft.pt'))
 
 # Load saved model
 #model_ft = torch.load('model_ft_10_epochs.pt')
@@ -442,7 +445,7 @@ preprocess = transforms.Compose([
 
 
 data_test_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced/test'
-data_test_outdir = '/home/ubuntu/Projects/virtualenv/pytorch_densenet/Pytorch_fine_tuning_Tutorial/test_out'
+data_test_outdir = os.path.join(output_dir,'test_out')
 
 ## DEBUG
 #test_img_1 = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced/test/0_images_not_infection/00026825_005.jpg'
@@ -454,7 +457,7 @@ data_test_outdir = '/home/ubuntu/Projects/virtualenv/pytorch_densenet/Pytorch_fi
 #img.save('test_img.jpg')
 #img_tensor = preprocess(img)
 #img_variable = Variable(img_tensor.unsqueeze(0))
-#logit = model_ft(img_variable.cuda())
+#logit = model_ft(img_variable.cuda(gpu_num))
 
 for dx in class_names:
     if os.path.exists(os.path.join(data_test_outdir,dx)):
@@ -466,7 +469,7 @@ for dx in class_names:
         img.save(os.path.join(data_test_outdir,dx,f))
         img_tensor = preprocess(img)
         img_variable = Variable(img_tensor.unsqueeze(0))
-        logit = model_ft(img_variable.cuda())
+        logit = model_ft(img_variable.cuda(gpu_num))
 
         h_x = F.sigmoid(logit).data.squeeze()
         class_idx = torch.round(h_x).int().cpu().numpy()[0]
@@ -480,42 +483,6 @@ for dx in class_names:
         heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
         result = heatmap * 0.3 + img * 0.5
         cv2.imwrite(os.path.join(data_test_outdir,dx,f), result)
-
-##img_pil = Image.open(os.path.join(data_dir,'val/images_infection/00000091_004.jpg'))
-#img_pil = Image.open('/home/ubuntu/Desktop/torch-cxr8/images_100/val/images_infection/00000091_004.jpg')
-#img_pil.save('00000091_004.jpg')
-
-#img_tensor = preprocess(img_pil)
-#img_variable = Variable(img_tensor.unsqueeze(0))
-#logit = model_ft(img_variable.cuda())
-
-#h_x = F.sigmoid(logit).data.squeeze()
-#class_idx = torch.round(h_x).int().cpu().numpy()[0]
-##probs, idx = h_x.sort(0, True)
-
-
-## output the prediction
-##for i in range(0, 2):
-    ##print('{:.3f} -> {}'.format(probs[i], class_names[idx[i]]))
-
-#print('{:.3f} -> {}'.format(h_x.cpu().numpy()[0], class_names[class_idx]))
-    
-##if use_gpu:
-                ##ax.set_title('predicted: {}'.format(class_names[Variable(preds.cuda()).cpu().data.numpy()[j][0]]))
-            ##else:
-                ##ax.set_title('predicted: {}'.format(class_names[preds[j]]))
-
-## generate class activation mapping for the top1 prediction
-#CAMs = returnCAM(features_blobs[0], weight_softmax, [class_idx])
-
-## render the CAM and output
-##print('output CAM.jpg for the top1 prediction: %s'%classes[idx[0]])
-#img = cv2.imread('00000091_004.jpg')
-#height, width, _ = img.shape
-#heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
-#result = heatmap * 0.3 + img * 0.5
-#cv2.imwrite('CAM.jpg', result)
-
 
 #visualize_model(model_ft)
 
@@ -546,7 +513,7 @@ for i in range(0,len(image_files)):
 
     img_tensor = preprocess(img_pil)
     img_variable = Variable(img_tensor.unsqueeze(0))
-    logit = model_ft(img_variable.cuda())
+    logit = model_ft(img_variable.cuda(gpu_num))
 
     h_x = F.sigmoid(logit).data.squeeze()
     class_idx = torch.round(h_x).int().cpu().numpy()[0]
