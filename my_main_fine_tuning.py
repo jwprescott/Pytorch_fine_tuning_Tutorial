@@ -66,7 +66,8 @@ data_transforms = {
 #datafile = open(os.path.join(DATA_DIR,'Data_Entry_2017.csv'),'rt')
 
 #data_dir = '/home/ubuntu/Desktop/torch-hemorrhage/images_curated'
-data_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative'
+#data_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative'
+data_dir = '/home/ubuntu/Desktop/torch-cxr8/relabeled_images/images_pneumonia_vs_negative'
 #data_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced'
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
@@ -81,10 +82,11 @@ use_gpu = torch.cuda.is_available()
 
 # set number of GPU device used {0,1,2,3}; that way can run program with different parameters
 # on different GPUs at the same time
-gpu_num = 1
+gpu_num = 0
 
-# Create output dir and output files based on GPU number
-output_dir = 'output_{}'.format(gpu_num)
+# Create output dir and output files based on current datetime
+timestr = time.strftime("%Y%m%d_%H%M%S")
+output_dir = 'output_{}'.format(timestr)
 
 if os.path.exists(output_dir):
     rmtree(output_dir)
@@ -121,17 +123,22 @@ def imshow(inp, title=None):
 logger = Logger(os.path.join(output_dir,'logs'))
 
 
-class_weights = torch.FloatTensor([0.015,0.985])
+# Weights based on number of samples for each class in training set
+# 1276 pneumonia, 103245 other
+#class_weights = torch.FloatTensor([0.0122,0.9878])
 #class_weights = torch.FloatTensor([0.1,0.9])
+#class_weights = torch.FloatTensor([0.6,0.4])
 
 #if use_gpu:
     #class_weights = class_weights.cuda(gpu_num)
     
 
-def save_checkpoint(state, is_best, output_dir, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best_acc, is_best_loss, output_dir, filename='checkpoint.pth.tar'):
     torch.save(state, os.path.join(output_dir,filename))
-    if is_best:
-        copyfile(filename, os.path.join(output_dir,'model_best.pth.tar'))
+    if is_best_acc:
+        copyfile(filename, os.path.join(output_dir,'model_best_acc.pth.tar'))
+    if is_best_loss:
+        copyfile(filename, os.path.join(output_dir,'model_best_loss.pth.tar'))
         
 ## To load checkpoint
 #checkpoint = torch.load('checkpoint.pth.tar')
@@ -149,6 +156,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
     best_model_wts = model.state_dict()
     best_acc = 0.0
+    best_loss = 100000.0
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -172,23 +180,20 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
             for data in dataloaders[phase]:
                 # get the inputs
                 inputs, labels = data
-                #weights = torch.FloatTensor([class_weights[x] for x in labels]).unsqueeze(1)
-                weights = torch.FloatTensor([class_weights[x] for x in labels])
-                #labels = labels.float().unsqueeze(1)
-                #labels = labels.unsqueeze(1)
+                #weights = torch.FloatTensor([class_weights[x] for x in labels])
 
                 # wrap them in Variable
                 if use_gpu:
                     inputs = Variable(inputs.cuda(gpu_num))
                     labels = Variable(labels.cuda(gpu_num))
-                    weights = weights.cuda(gpu_num)
+                    #weights = weights.cuda(gpu_num)
                 else:
                     inputs, labels = Variable(inputs), Variable(labels)
 
                 # zero the parameter gradients
                 optimizer.zero_grad()
                 
-                criterion.weight = weights
+                #criterion.weight = weights
 
                 # forward
                 outputs = model(inputs)
@@ -232,7 +237,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
             f1_weighted = f1_score(running_labels, running_preds, pos_label = 1,
                           average = 'weighted')
 
-            print('{}, Loss: {:.4f}, Acc: {:.4f}, AUC: {:.4f}, TP: {}, FP: {}, TN: {}, FN: {}, Sens: {:.4f}, Spec: {:.4f}, PPV: {:.4f}, NPV: {:.4f}, FPR: {:.4f}, FNR: {:.4f}, FDR: {:.4f}, F1 binary: {:.4f}, F1 weighted: {:.4f}'.format(
+            print('{}, Loss: {:.6f}, Acc: {:.4f}, AUC: {:.4f}, TP: {}, FP: {}, TN: {}, FN: {}, Sens: {:.4f}, Spec: {:.4f}, PPV: {:.4f}, NPV: {:.4f}, FPR: {:.4f}, FNR: {:.4f}, FDR: {:.4f}, F1 binary: {:.4f}, F1 weighted: {:.4f}'.format(
                 phase, epoch_loss, epoch_acc, roc_auc, tp, fp, tn, fn, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
 
             # Save checkpoints
@@ -240,19 +245,27 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 #best_acc = epoch_acc
                 #best_model_wts = model.state_dict()
             if phase == 'val':
-                is_best = epoch_acc > best_acc
-                best_acc = max(epoch_acc, best_acc)
-                if is_best:
-                    best_model_wts = model.state_dict()
+                is_best_acc = epoch_acc > best_acc
+                is_best_loss = epoch_loss < best_loss
+                if is_best_acc:
+                    best_acc = epoch_acc
+                    best_model_acc_wts = model.state_dict()
+                if is_best_loss:
+                    best_loss = epoch_loss
+                    best_model_loss_wts = model.state_dict()
                     
                 save_checkpoint({
                     'epoch': epoch + 1,
                     #'arch': args.arch,
                     'state_dict': model.state_dict(),
+                    'criterion': criterion,
+                    'optimizer': optimizer,
+                    #'scheduler': scheduler,    # can't pickle this object
                     'best_acc': best_acc,
-                    }, is_best, output_dir)
+                    'best_loss': best_loss,
+                    }, is_best_acc, is_best_loss, output_dir)
                 
-            # Update optimizer leraning rate
+            # Update optimizer learning rate
             if phase == 'val':
                 scheduler.step(epoch_loss, epoch)
                 
@@ -289,7 +302,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 with open(val_stats_file,'a') as datafile:
                     datafile.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (epoch, epoch_loss, epoch_acc, roc_auc, sens, spec, ppv, npv, fpr, fnr, fdr, f1_binary, f1_weighted))
                     
-                # (4) Output ROC curve               
+                # (4) Output plots
+                # ROC curve
                 fpr, tpr, _ = roc_curve(running_labels, running_outputs_sig)
                 roc_auc = auc(fpr, tpr)
 
@@ -305,8 +319,12 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 plt.title('Receiver operating characteristic example')
                 plt.legend(loc="lower right")
                 #plt.show()
-                plt.savefig(os.path.join(output_dir,'ROC_{}.png'.format(epoch)),bbox_inches='tight')
+                plt.savefig(os.path.join(output_dir,'plot_ROC_{}.png'.format(epoch)),bbox_inches='tight')
                 plt.close()
+                
+                ## Accuracy
+                #plot.figure()
+                #plt.plot(np.arange(epoch),)
                         
                 ## (5) Log the images
                 #info = {
@@ -389,7 +407,7 @@ exp_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_ft, mode='min', fact
                                                   patience=10, verbose=True)
 
 model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
-                       num_epochs=300)
+                       num_epochs=50)
 #model_ft = train_model(model_ft, criterion, optimizer_ft, num_epochs=50)
 
 
@@ -444,8 +462,9 @@ preprocess = transforms.Compose([
 
 
 
-data_test_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced/test'
-data_test_outdir = os.path.join(output_dir,'test_out')
+#data_test_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced/test'
+data_test_dir = os.path.join(data_dir,'test')
+data_test_outdir = os.path.join(output_dir,'test_out_test')
 
 ## DEBUG
 #test_img_1 = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative_small_set_unbalanced/test/0_images_not_infection/00026825_005.jpg'
@@ -482,7 +501,7 @@ for dx in class_names:
         height, width, _ = img.shape
         heatmap = cv2.applyColorMap(cv2.resize(CAMs[0],(width, height)), cv2.COLORMAP_JET)
         result = heatmap * 0.3 + img * 0.5
-        cv2.imwrite(os.path.join(data_test_outdir,dx,f), result)
+        cv2.imwrite(os.path.join(data_test_outdir,dx,f+class_names[class_idx]+".jpg"), result)
 
 #visualize_model(model_ft)
 
@@ -491,8 +510,8 @@ for dx in class_names:
 
 
 # PREDICTION
-data_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative/test/images_infection/'
-data_not_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative/test/images_not_infection/'
+data_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative/test/1_images_infection/'
+data_not_infection_dir = '/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative/test/0_images_not_infection/'
 image_files = []
 diagnosis = []
 for file in os.listdir(data_infection_dir):

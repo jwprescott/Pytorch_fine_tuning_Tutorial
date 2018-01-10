@@ -19,22 +19,28 @@ import numpy as np
 import random
 
 DATA_DIR = "/home/ubuntu/Desktop/CXR8"
-OUT_DIR = "/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative"
+#IMAGE_DIR = "/home/ubuntu/Desktop/CXR8/images"
+IMAGE_DIR = "/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative/train/1_images_infection"   # for relabeled.csv
+#LABEL_FILE = "/home/ubuntu/Desktop/CXR8/Data_Entry_2017.csv"
+LABEL_FILE = "/home/ubuntu/Desktop/torch-cxr8/relabeled.csv"
+#OUT_DIR = "/home/ubuntu/Desktop/torch-cxr8/images_pneumonia_vs_negative"
+#DATA_DIR = "/home/ubuntu/Desktop/torch-cxr8"
+OUT_DIR = '/home/ubuntu/Desktop/torch-cxr8/relabeled_images/images_pneumonia_vs_negative'
 
 # Clean out, recreate output directories
-if os.path.exists(os.path.join(OUT_DIR,'images_infection')):
-    rmtree(os.path.join(OUT_DIR,'images_infection'))
-os.makedirs(os.path.join(OUT_DIR,'train/images_infection'))
-os.makedirs(os.path.join(OUT_DIR,'val/images_infection'))
-os.makedirs(os.path.join(OUT_DIR,'test/images_infection'))
+if os.path.exists(os.path.join(OUT_DIR,'1_images_infection')):
+    rmtree(os.path.join(OUT_DIR,'1_images_infection'))
+os.makedirs(os.path.join(OUT_DIR,'train/1_images_infection'))
+os.makedirs(os.path.join(OUT_DIR,'val/1_images_infection'))
+os.makedirs(os.path.join(OUT_DIR,'test/1_images_infection'))
 
-if os.path.exists(os.path.join(OUT_DIR,'images_not_infection')):
-    rmtree(os.path.join(OUT_DIR,'images_not_infection'))
-os.makedirs(os.path.join(OUT_DIR,'train/images_not_infection'))
-os.makedirs(os.path.join(OUT_DIR,'val/images_not_infection'))
-os.makedirs(os.path.join(OUT_DIR,'test/images_not_infection'))
+if os.path.exists(os.path.join(OUT_DIR,'0_images_not_infection')):
+    rmtree(os.path.join(OUT_DIR,'0_images_not_infection'))
+os.makedirs(os.path.join(OUT_DIR,'train/0_images_not_infection'))
+os.makedirs(os.path.join(OUT_DIR,'val/0_images_not_infection'))
+os.makedirs(os.path.join(OUT_DIR,'test/0_images_not_infection'))
 
-datafile = open(os.path.join(DATA_DIR,'Data_Entry_2017.csv'),'rt')
+datafile = open(LABEL_FILE,'rt')
 
 reader = csv.reader(datafile,delimiter=',')
 _ = next(reader)   #skip header
@@ -60,7 +66,7 @@ for row in reader:
                     img = Image.open(os.path.join(DATA_DIR,'images',row[0]))
                     rgbimg = Image.new("RGB", img.size)
                     rgbimg.paste(img)
-                    rgbimg.save(os.path.join(OUT_DIR,'images_infection',row[0][:-4]+'.jpg'))
+                    rgbimg.save(os.path.join(OUT_DIR,'1_images_infection',row[0][:-4]+'.jpg'))
                     #copyfile(os.path.join(DATA_DIR,"images",row[0]),
                             #os.path.join(OUT_DIR,"images_infection",row[0]))
                 else:
@@ -76,7 +82,7 @@ for row in reader:
                     img = Image.open(os.path.join(DATA_DIR,'images',row[0]))
                     rgbimg = Image.new("RGB", img.size)
                     rgbimg.paste(img)
-                    rgbimg.save(os.path.join(OUT_DIR,'images_not_infection',row[0][:-4]+'.jpg'))
+                    rgbimg.save(os.path.join(OUT_DIR,'0_images_not_infection',row[0][:-4]+'.jpg'))
                     #copyfile(os.path.join(DATA_DIR,"images",row[0]),
                             #os.path.join(OUT_DIR,"images_not_infection",row[0]))
                 else:
@@ -103,13 +109,13 @@ datafile.close()
 # Separate images into train, validation, and test datasets, without patient overlap
 #
 
-train_percent = 0.93
-val_percent = 0.05
-test_percent = 0.02
+#train_percent = 0.93
+#val_percent = 0.05
+#test_percent = 0.02
 
-#train_percent = 0.8
-#val_percent = 0.1
-#test_percent = 0.1
+train_percent = 0.8
+val_percent = 0.1
+test_percent = 0.1
 
 file_infection = []
 file_not_infection = []
@@ -118,7 +124,7 @@ pt_not_infection = []
 
 flag_infection = 0
 
-datafile = open(os.path.join(DATA_DIR,'Data_Entry_2017.csv'),'rt')
+datafile = open(LABEL_FILE,'rt')
 
 reader = csv.reader(datafile,delimiter=',')
 _ = next(reader)   #skip header
@@ -129,12 +135,15 @@ for row in reader:
     for dx in row[1].split('|'):
         if dx == 'Pneumonia':
             file_infection.append(row[0])
-            pt_infection.append(row[3])
+            #pt_infection.append(row[3])
+            pt_infection.append(row[0].split("_")[0])   # for relabeled.csv
             flag_infection = 1
             break
-    if not flag_infection:
+    #if not flag_infection:
+    if not flag_infection and dx == 'Not pneumonia':    # for relabeled.csv
         file_not_infection.append(row[0])
-        pt_not_infection.append(row[3])
+        #pt_not_infection.append(row[3])
+        pt_not_infection.append(row[0].split("_")[0])   # for relabeled.csv
     debug_count = debug_count + 1
     #if debug_count > 1000:
         #break
@@ -260,37 +269,37 @@ print("")
 
                 
 for f in pt_infection_image_file_train:
-    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    img = Image.open(os.path.join(IMAGE_DIR,f))
     rgbimg = Image.new("RGB", img.size)
     rgbimg.paste(img)
-    rgbimg.save(os.path.join(OUT_DIR,'train/images_infection',f[:-4]+'.jpg'))
+    rgbimg.save(os.path.join(OUT_DIR,'train/1_images_infection',f[:-4]+'.jpg'))
     
 for f in pt_not_infection_image_file_train:
-    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    img = Image.open(os.path.join(IMAGE_DIR,f))
     rgbimg = Image.new("RGB", img.size)
     rgbimg.paste(img)
-    rgbimg.save(os.path.join(OUT_DIR,'train/images_not_infection',f[:-4]+'.jpg'))
+    rgbimg.save(os.path.join(OUT_DIR,'train/0_images_not_infection',f[:-4]+'.jpg'))
     
 for f in pt_infection_image_file_val:
-    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    img = Image.open(os.path.join(IMAGE_DIR,f))
     rgbimg = Image.new("RGB", img.size)
     rgbimg.paste(img)
-    rgbimg.save(os.path.join(OUT_DIR,'val/images_infection',f[:-4]+'.jpg'))
+    rgbimg.save(os.path.join(OUT_DIR,'val/1_images_infection',f[:-4]+'.jpg'))
     
 for f in pt_not_infection_image_file_val:
-    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    img = Image.open(os.path.join(IMAGE_DIR,f))
     rgbimg = Image.new("RGB", img.size)
     rgbimg.paste(img)
-    rgbimg.save(os.path.join(OUT_DIR,'val/images_not_infection',f[:-4]+'.jpg'))
+    rgbimg.save(os.path.join(OUT_DIR,'val/0_images_not_infection',f[:-4]+'.jpg'))
     
 for f in pt_infection_image_file_test:
-    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    img = Image.open(os.path.join(IMAGE_DIR,f))
     rgbimg = Image.new("RGB", img.size)
     rgbimg.paste(img)
-    rgbimg.save(os.path.join(OUT_DIR,'test/images_infection',f[:-4]+'.jpg'))
+    rgbimg.save(os.path.join(OUT_DIR,'test/1_images_infection',f[:-4]+'.jpg'))
     
 for f in pt_not_infection_image_file_test:
-    img = Image.open(os.path.join(DATA_DIR,'images',f))
+    img = Image.open(os.path.join(IMAGE_DIR,f))
     rgbimg = Image.new("RGB", img.size)
     rgbimg.paste(img)
-    rgbimg.save(os.path.join(OUT_DIR,'test/images_not_infection',f[:-4]+'.jpg'))
+    rgbimg.save(os.path.join(OUT_DIR,'test/0_images_not_infection',f[:-4]+'.jpg'))
