@@ -137,7 +137,7 @@ print(net_printer.to_string(core.Net(predict_net)))
 #display.Image(graph.create_png(), width=800)
 
 # Now, let's also pass in the resized cat image for processing by the model.
-workspace.FeedBlob("16", np.array(img_y)[np.newaxis, np.newaxis, :, :].astype(np.float32))
+workspace.FeedBlob("1", np.array(img_y)[np.newaxis, np.newaxis, :, :].astype(np.float32))
 
 # run the predict_net to get the model output
 workspace.RunNetOnce(predict_net)
@@ -154,3 +154,5 @@ final_img = Image.merge(
         img_cb.resize(img_out_y.size, Image.BICUBIC),
         img_cr.resize(img_out_y.size, Image.BICUBIC),
     ]).convert("RGB")
+
+final_img.save("/home/prescott/Projects/Pytorch_fine_tuning_Tutorial/cat_superres_mobile.jpg")
