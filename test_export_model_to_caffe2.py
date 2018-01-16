@@ -69,7 +69,8 @@ class SuperResolutionNet(nn.Module):
                                #export_params=True)      # store the trained parameter weights inside the model file
 
 # Try densenet model
-torch_model = models.densenet121(pretrained=True)
+#torch_model = models.densenet121(pretrained=True)
+torch_model = torch.load('/home/prescott/Desktop/output_20180110_162914/model_best_acc_cpu.pth.tar')
 
 torch_model.train(False)
 
@@ -80,7 +81,8 @@ preprocess = transforms.Compose([
    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-img_pil = Image.open('/home/prescott/Projects/tf-hemorrhage/images_curated/subarachnoid_hemorrhage/34TY8_0_0012.jpg')
+#img_pil = Image.open('/home/prescott/Projects/tf-hemorrhage/images_curated/subarachnoid_hemorrhage/34TY8_0_0012.jpg')
+img_pil = Image.open('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
 
 img_tensor = preprocess(img_pil)
 x = Variable(img_tensor.unsqueeze(0))
@@ -90,7 +92,7 @@ x = Variable(img_tensor.unsqueeze(0))
 
 torch_out = torch.onnx._export(torch_model,             # model being run
                                x,                       # model input (or a tuple for multiple inputs)
-                               "densenet121.onnx", # where to save the model (can be a file or file-like object)
+                               "chexnet.onnx", # where to save the model (can be a file or file-like object)
                                export_params=True)      # store the trained parameter weights inside the model file
 
 import onnx
@@ -98,7 +100,7 @@ import onnx_caffe2.backend
 
 # Load the ONNX ModelProto object. model is a standard Python protobuf object
 #model = onnx.load("super_resolution.onnx")
-model = onnx.load("densenet121.onnx")
+model = onnx.load("chexnet.onnx")
 
 # prepare the caffe2 backend for executing the model this converts the ONNX model into a
 # Caffe2 NetDef that can execute it. Other ONNX backends, like one for CNTK will be
@@ -167,13 +169,14 @@ from matplotlib import pyplot
 from skimage import io, transform
 from IPython import display
 
-## load the cat image and convert it to Ybr format
-img = Image.open("/home/prescott/Projects/Pytorch_fine_tuning_Tutorial/cat_224x224.jpg")
-img_ycbcr = img.convert('YCbCr')
-img_y, img_cb, img_cr = img_ycbcr.split()
+### load the cat image and convert it to Ybr format
+#img = Image.open("/home/prescott/Projects/Pytorch_fine_tuning_Tutorial/cat_224x224.jpg")
+#img_ycbcr = img.convert('YCbCr')
+#img_y, img_cb, img_cr = img_ycbcr.split()
 
-# load the hemorrhage image
-img = Image.open('/home/prescott/Projects/tf-hemorrhage/images_curated/subarachnoid_hemorrhage/34TY8_0_0012.jpg')
+# load the image
+#img = Image.open('/home/prescott/Projects/tf-hemorrhage/images_curated/subarachnoid_hemorrhage/34TY8_0_0012.jpg')
+img = Image.open('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
 img_tensor = preprocess(img)
 #img_y = img_tensor.cpu()
 img_y = img_tensor.unsqueeze(0).cpu()
@@ -199,9 +202,9 @@ workspace.RunNetOnce(predict_net)
 
 # Now let's get the model output blob
 #img_out = workspace.FetchBlob("27")
-img_out = workspace.FetchBlob("1274")
+img_out = workspace.FetchBlob("1277")
 
-img_out_y = Image.fromarray(np.uint8((img_out[0, 0]).clip(0, 255)), mode='L')
+#img_out_y = Image.fromarray(np.uint8((img_out[0, 0]).clip(0, 255)), mode='L')
 
 ## get the output image follow post-processing step from PyTorch implementation
 #final_img = Image.merge(
