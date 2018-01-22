@@ -14,7 +14,7 @@ import torch.onnx
 import torch.nn.init as init
 
 from PIL import Image
-
+import cv2
 
 class SuperResolutionNet(nn.Module):
     def __init__(self, upscale_factor, inplace=False):
@@ -200,9 +200,31 @@ workspace.FeedBlob("1", np.array(img_y).astype(np.float32))
 # run the predict_net to get the model output
 workspace.RunNetOnce(predict_net)
 
-# Now let's get the model output blob
-#img_out = workspace.FetchBlob("27")
-img_out = workspace.FetchBlob("1277")
+# Now let's get the model output classifier vector
+img_class = workspace.FetchBlob("1277")
+
+# Average pool layer for DenseNet 121
+img_avg_pool = workspace.FetchBlob("1272")
+
+# Classifier weight layer for DenseNet121
+weights_classifier= workspace.FetchBlob("1274")
+
+# Inner product
+#cam = weights_classifier.dot(img_avg_pool.reshape(1024,49))
+output_cam = []
+cam = cam.reshape(7,7)
+cam = cam - np.min(cam)
+cam_img = cam / np.max(cam)
+cam_img = np.uint8(255 * cam_img)
+output_cam.append(cv2.resize(cam_img, (1024,1024)))
+
+# Write result
+img_orig = cv2.imread('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
+height, width, _ = img_orig.shape
+heatmap = cv2.applyColorMap(cv2.resize(output_cam[0],(width, height)), cv2.COLORMAP_JET)
+result = heatmap * 0.3 + img_orig * 0.5
+cv2.imwrite("output.jpg", result)
+
 
 #img_out_y = Image.fromarray(np.uint8((img_out[0, 0]).clip(0, 255)), mode='L')
 
