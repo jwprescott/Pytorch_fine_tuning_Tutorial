@@ -144,6 +144,16 @@ with open('init_net.pb', "wb") as fopen:
     fopen.write(init_net.SerializeToString())
 with open('predict_net.pb', "wb") as fopen:
     fopen.write(predict_net.SerializeToString())
+    
+## Export feature weights. Have not yet found reliable way to extract these weights
+## from caffe2 model. Until that is figured out, load these weights to calculate
+## class activation maps on mobile
+#params = list(torch_model.parameters())
+#feature_weights = params[-2].data.cpu().numpy()
+#feature_weights_proto = utils.NumpyArrayToCaffe2Tensor(feature_weights)
+
+#with open('feature_weights.pb',"wb") as fopen:
+    #fopen.write(feature_weights_proto.SerializeToString())
 
 ## Verify it runs with predictor (from facebook's AICamera example)
 #with open("squeeze_init_net.pb") as f:
@@ -155,6 +165,9 @@ with open('predict_net.pb', "wb") as fopen:
 ## The following code should run:
 ## img = np.random.rand(1, 3, 224, 224).astype(np.float32)
 ## p.run([img])
+
+#with open("feature_weights.pb",'rb') as f:
+    #feature_weights_2 = f.read()
 
     
 # Some standard imports
@@ -206,11 +219,11 @@ img_class = workspace.FetchBlob("1277")
 # Average pool layer for DenseNet 121
 img_avg_pool = workspace.FetchBlob("1272")
 
-# Classifier weight layer for DenseNet121
-weights_classifier= workspace.FetchBlob("1274")
+# Classifier weights layer for DenseNet121
+weights_classifier = np.array(init_net.op[605].arg[1].floats)
 
 # Inner product
-#cam = weights_classifier.dot(img_avg_pool.reshape(1024,49))
+cam = weights_classifier.dot(img_avg_pool.reshape(1024,49))
 output_cam = []
 cam = cam.reshape(7,7)
 cam = cam - np.min(cam)
