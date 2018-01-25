@@ -141,14 +141,18 @@ def save_checkpoint(state, is_best_acc, is_best_loss, output_dir, filename='chec
         copyfile(filename, os.path.join(output_dir,'model_best_loss.pth.tar'))
         
 ## To load checkpoint
-#checkpoint = torch.load('checkpoint.pth.tar')
-#start_epoch = checkpoint['epoch']
-#best_acc = checkpoint['best_acc']
-#model_ft = models.densenet121(pretrained=True)
-#num_ftrs = model_ft.classifier.in_features	# for densenet
-#model_ft.classifier = nn.Linear(num_ftrs, 1) # for densenet
-#model_ft = model_ft.cuda(gpu_num)
-#model_ft.load_state_dict(checkpoint['state_dict'])
+checkpoint = torch.load('checkpoint.pth.tar')
+start_epoch = checkpoint['epoch']
+best_acc = checkpoint['best_acc']
+model_ft = models.densenet121(pretrained=True)
+num_ftrs = model_ft.classifier.in_features # for densenet
+model_ft.classifier = nn.Linear(num_ftrs, 1) # for densenet
+model_ft = model_ft.cuda(gpu_num)
+model_ft.load_state_dict(checkpoint['state_dict'])
+
+## To test already trained model
+#model_ft = torch.load('model_best_acc_cpu.pth.tar')
+#model_ft.train(False)
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 #def train_model(model, criterion, optimizer, num_epochs=25):
