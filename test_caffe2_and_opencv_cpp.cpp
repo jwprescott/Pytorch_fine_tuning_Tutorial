@@ -77,25 +77,17 @@ void run() {
   // >>> img =
   // skimage.img_as_float(skimage.io.imread(IMAGE_LOCATION)).astype(np.float32)
   auto image = cv::imread(FLAGS_file);  // CV_8UC3
-  std::cout << "image size: " << image.size() << std::endl;
+  std::cout << "Orig image size: " << image.size() << std::endl;
+  std::cout << "Orig image channels: " << image.channels() << std::endl;
 
   // scale image to fit
   cv::Size scale(std::max(FLAGS_size * image.cols / image.rows, FLAGS_size),
                  std::max(FLAGS_size, FLAGS_size * image.rows / image.cols));
   cv::resize(image, image, scale);
-  std::cout << "scaled size: " << image.size() << std::endl;
+  std::cout << "Image scaled size: " << image.size() << std::endl;
 
-//  // crop image to fit
-//  cv::Rect crop((image.cols - FLAGS_size) / 2, (image.rows - FLAGS_size) / 2,
-//                FLAGS_size, FLAGS_size);
-//  image = image(crop);
-//  std::cout << "cropped size: " << image.size() << std::endl;
-
-  // TODO: UNIT NORMALIZE IMAGES (DIVIDE EACH CHANNEL BY 255), THEN SUBTRACT
-  // MEAN AND STD OF IMAGENET
-//  // convert to float, normalize to mean 128
+  // convert to float
   image.convertTo(image, CV_32FC3);
-//  image.convertTo(image, CV_32FC3, 1.0, -128);
 //  std::cout << "value range: ("
 //            << *std::min_element((float *)image.datastart,
 //                                 (float *)image.dataend)
@@ -103,6 +95,37 @@ void run() {
 //            << *std::max_element((float *)image.datastart,
 //                                 (float *)image.dataend)
 //            << ")" << std::endl;
+
+  // Normalize image (scale 0-1, subtract per channel mean, divide by per channel
+  // standard deviation
+  //  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+  cv::normalize(image, image, 1, 0, cv::NORM_MINMAX);
+  image -= cv::Scalar(0.485, 0.456, 0.406);
+
+  // Channel-wise standard deviation scaling
+  // TODO: only applying single scalar division to all channels. Figure out
+  // how to apply separate scalar division to each channel.
+//  cv::Mat d(3,1,CV_32F);
+////  cv::Mat d(1,1,CV_32FC3,cv::Scalar(0.229, 0.224, 0.225));
+//  d.at<float>(0) = 0.229;
+//  d.at<float>(1) = 0.224;
+//  d.at<float>(2) = 0.225;
+//  cv::divide(image, d, image);
+  cv::divide(image, 0.229, image);
+
+//  image /= cv::Scalar(0.229, 0.224, 0.225);
+
+  // DEBUG: Output stats of normalized image
+  double min, max;
+  cv::minMaxLoc(image, &min, &max);
+  cv::Scalar mean, stddev;
+  cv::meanStdDev(image, mean, stddev);
+  std::cout << "Orig image, normalized" << std::endl
+            << "Min: " << min << std::endl
+            << "Max: " << max << std::endl
+            << "Mean: " << mean[0] << std::endl
+            << "Std: " << stddev[0] << std::endl
+            << "Channels: " << image.channels() << std::endl;
 
   // convert NHWC to NCHW
   vector<cv::Mat> channels(3);
@@ -128,19 +151,19 @@ void run() {
   
   // >>> p = workspace.Predictor(init_net, predict_net)
   Workspace workspace("tmp");
-//  CAFFE_ENFORCE(workspace.RunNetOnce(init_net));
   CAFFE_ENFORCE(workspace.CreateNet(init_net));
   CAFFE_ENFORCE(workspace.RunNet(init_net.name()));
   auto input = workspace.CreateBlob("data")->GetMutable<TensorCPU>();
   input->ResizeLike(tensor);
   input->ShareData(tensor);
-//  CAFFE_ENFORCE(workspace.RunNetOnce(predict_net));
   CAFFE_ENFORCE(workspace.CreateNet(predict_net));
   CAFFE_ENFORCE(workspace.RunNet(predict_net.name()));
 
   // Model output classifier vector
   auto output = workspace.GetBlob("1277")->Get<TensorCPU>();
 
+  std::cout << "Model output: " << output.data<float>()[0]
+            << std::endl;
 
   // Average pool layer for DenseNet 121
   auto img_avg_pool = workspace.GetBlob("1272")->Get<TensorCPU>();
@@ -173,15 +196,21 @@ void run() {
   const auto &img_avg_pool_data = img_avg_pool.data<float>();
 
 //  Eigen::Matrix<float,1024,49> mat_img_avg_pool;
-//   std::unique_ptr<Eigen::Matrix<float,1024,49> > mat_img_avg_pool(new Eigen::Matrix<float,1024,49>);
-  Eigen::MatrixXf mat_img_avg_pool(1024,49);
+  Eigen::MatrixXf mat_img_avg_pool(49,1024);
    std::cout << mat_img_avg_pool.rows() << std::endl;
    std::cout << mat_img_avg_pool.cols() << std::endl;
   for (auto i = 0; i < img_avg_pool.size(); i++) {
     mat_img_avg_pool(i) = img_avg_pool_data[i];
   }
   std::cout << std::endl;
+  mat_img_avg_pool.transposeInPlace();
 
+  // DEBUG: Write image average pool matrix to file, compare with output from python script
+  const static Eigen::IOFormat CSVFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n");
+
+  std::ofstream file("img_avg_pool_reshape_cpp.csv");
+  file << mat_img_avg_pool.format(CSVFormat);
+  file.close();
 //  // DEBUG: Make sure values/indices from img_avg_pool layer and mat_img_avg_pool match
 //  for(int i = 0; i < 49; ++i)
 //  {
@@ -221,10 +250,6 @@ void run() {
 // Eigen::MatrixXf saliency_map(1,49);
  Eigen::MatrixXf saliency_map;
  saliency_map = mat_weights_classifier * mat_img_avg_pool;
-// Eigen::MatrixXf saliency_map(1,49);
-// saliency_map.no_alias() += mat_weights_classifier * mat_img_avg_pool;
-
- // DEBUG: Make sure multiplication makes sense
 
  for(int i = 0; i < 49; ++i)
  {
@@ -237,34 +262,23 @@ void run() {
                << mult_result << std::endl;
  }
 
-
-// std::cout << "Here is mat_weights_classifier * mat_img_avg_pool:\n"
-//           << saliency_map << std::endl;
-
-//  std::cout << "Complete" << std::endl;
-
     // Reshape saliency map
     Eigen::Map<Eigen::MatrixXf> saliency_map_reshape(saliency_map.data(), 7, 7);
     Eigen::MatrixXf saliency_matrix(7,7);
     saliency_matrix = saliency_map_reshape;
-//    Eigen::MatrixXf saliency_matrix_transpose(7,7);
-//    saliency_matrix_transpose = saliency_matrix.transpose();
+    saliency_matrix.transposeInPlace();
 
     // Map to openCV
     cv::Mat_<float> saliency_matrix_opencv = cv::Mat_<float>::zeros(7,7);
-//    cv::eigen2cv(saliency_matrix_transpose, saliency_matrix_opencv);
     cv::eigen2cv(saliency_matrix, saliency_matrix_opencv);
 
-//    transpose(saliency_matrix_opencv,saliency_matrix_opencv);
     cv::Size scaleUp(1024,1024);
       cv::resize(saliency_matrix_opencv, saliency_matrix_opencv, scaleUp);
       std::cout << "scaled size: " << saliency_matrix_opencv.size() << std::endl;
 
-      double min, max;
       cv::minMaxLoc(saliency_matrix_opencv, &min, &max);
       std::cout << "Min, max (before normalizing): " << min << ", " << max << std::endl;
 
-//      saliency_matrix_opencv.convertTo(saliency_matrix_opencv, CV_32FC3);
       saliency_matrix_opencv -= min;
       cv::minMaxLoc(saliency_matrix_opencv, &min, &max);
       saliency_matrix_opencv /= max;
@@ -281,11 +295,6 @@ void run() {
       cv::Scalar intensity = cm_saliency_matrix_opencv.at<uchar>(10,10);
       std::cout << intensity.val[0] << std::endl;
 
-      // CV_8UC3
-//      saliency_matrix_opencv.convertTo(saliency_matrix_opencv, CV_8U);
-      cv::Mat cm_saliency_matrix_opencv_color;
-//      cv::cvtColor(cm_saliency_matrix_opencv,cm_saliency_matrix_opencv_color,CV_GRAY2BGR);
-
       image = cv::imread(FLAGS_file);
 
       cv::Mat result;
@@ -293,17 +302,6 @@ void run() {
       result = cm_saliency_matrix_opencv * 0.3 + image * 0.5;
 
       cv::imwrite("saliency_heatmap.jpg", result);
-
-      // convert to float, normalize to mean 128
-//      image.convertTo(image, CV_32FC3, 1.0, -128);
-//      std::cout << "value range: ("
-//                << *std::min_element((float *)image.datastart,
-//                                     (float *)image.dataend)
-//                << ", "
-//                << *std::max_element((float *)image.datastart,
-//                                     (float *)image.dataend)
-//                << ")" << std::endl;
-
 }
 
 }   // namespace caffe2
