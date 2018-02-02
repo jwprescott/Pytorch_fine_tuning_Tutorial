@@ -16,58 +16,6 @@ import torch.nn.init as init
 from PIL import Image
 import cv2
 
-class SuperResolutionNet(nn.Module):
-    def __init__(self, upscale_factor, inplace=False):
-        super(SuperResolutionNet, self).__init__()
-
-        self.relu = nn.ReLU(inplace=inplace)
-        self.conv1 = nn.Conv2d(1, 64, (5, 5), (1, 1), (2, 2))
-        self.conv2 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
-        self.conv3 = nn.Conv2d(64, 32, (3, 3), (1, 1), (1, 1))
-        self.conv4 = nn.Conv2d(32, upscale_factor ** 2, (3, 3), (1, 1), (1, 1))
-        self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
-
-        self._initialize_weights()
-
-    def forward(self, x):
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        x = self.relu(self.conv3(x))
-        x = self.pixel_shuffle(self.conv4(x))
-        return x
-
-    def _initialize_weights(self):
-        init.orthogonal(self.conv1.weight, init.calculate_gain('relu'))
-        init.orthogonal(self.conv2.weight, init.calculate_gain('relu'))
-        init.orthogonal(self.conv3.weight, init.calculate_gain('relu'))
-        init.orthogonal(self.conv4.weight)
-
-
-## Create the super-resolution model by using the above model definition.
-#torch_model = SuperResolutionNet(upscale_factor=3)
-
-## Load pretrained model weights
-#model_url = 'https://s3.amazonaws.com/pytorch/test_data/export/superres_epoch100-44c6958e.pth'
-
-## Initialize model with the pretrained weights
-#map_location = lambda storage, loc: storage
-#if torch.cuda.is_available():
-    #map_location = None
-#torch_model.load_state_dict(model_zoo.load_url(model_url, map_location=map_location))
-
-## set the train mode to false since we will only run the forward pass.
-#torch_model.train(False)
-
-## Input to the model
-#batch_size = 1    # just a random number
-#x = Variable(torch.randn(batch_size, 1, 224, 224), requires_grad=True)
-
-## Export the model
-#torch_out = torch.onnx._export(torch_model,             # model being run
-                               #x,                       # model input (or a tuple for multiple inputs)
-                               #"super_resolution.onnx", # where to save the model (can be a file or file-like object)
-                               #export_params=True)      # store the trained parameter weights inside the model file
-
 # Try densenet model
 #torch_model = models.densenet121(pretrained=True)
 torch_model = torch.load('/home/prescott/Desktop/output_20180110_162914/model_best_acc_cpu.pth.tar')
@@ -82,10 +30,35 @@ preprocess = transforms.Compose([
 ])
 
 #img_pil = Image.open('/home/prescott/Projects/tf-hemorrhage/images_curated/subarachnoid_hemorrhage/34TY8_0_0012.jpg')
-img_pil = Image.open('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
-
+#img_pil = Image.open('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
+img_file = '/home/prescott/Desktop/20180130_220842.jpg'
+img_pil = Image.open(img_file)
+img_pil = img_pil.convert('L')  # make grayscale
+img_np = np.array(img_pil)
+img_np = np.stack((img_np,)*3) # make 3 channel grayscale
+img_np = np.moveaxis(img_np, 0, -1)
+if img_file == '/home/prescott/Desktop/20180130_220842.jpg':
+    img_np = np.moveaxis(img_np, 0,1)   # rotate android camera images from samsung phone
+    img_np = np.flip(img_np,1)      # flip cols axis (L-R)
+img_pil = Image.fromarray(img_np)
+# Zero pad image, scale to 1024 x 1024, before sending to preprocess function
+# Mainly this first resize is done for comparison to outputs from NIH CXR8 dataset
+longer_side = max(img_pil.size)
+horizontal_padding = (longer_side - img_pil.size[0]) / 2
+vertical_padding = (longer_side - img_pil.size[1]) / 2
+img_pil = img_pil.crop(
+    (
+        -horizontal_padding,
+        -vertical_padding,
+        img_pil.size[0] + horizontal_padding,
+        img_pil.size[1] + vertical_padding
+    )
+)
+img_pil = img_pil.resize((1024,1024))
+img_pil = Image.fromarray(img_np)
 img_tensor = preprocess(img_pil)
 x = Variable(img_tensor.unsqueeze(0))
+
     
 #batch_size = 1    # just a random number
 #x = Variable(torch.randn(batch_size, 3, 224, 224), requires_grad=True)
@@ -189,9 +162,32 @@ from IPython import display
 
 # load the image
 #img = Image.open('/home/prescott/Projects/tf-hemorrhage/images_curated/subarachnoid_hemorrhage/34TY8_0_0012.jpg')
-img = Image.open('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
-img_tensor = preprocess(img)
-#img_y = img_tensor.cpu()
+#img = Image.open('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
+img_file = '/home/prescott/Desktop/20180130_220842.jpg'
+img_pil = Image.open(img_file)
+img_pil = img_pil.convert('L')  # make grayscale
+img_np = np.array(img_pil)
+img_np = np.stack((img_np,)*3) # make 3 channel grayscale
+img_np = np.moveaxis(img_np, 0, -1)
+if img_file == '/home/prescott/Desktop/20180130_220842.jpg':
+    img_np = np.moveaxis(img_np, 0,1)   # rotate android camera images from samsung phone
+    img_np = np.flip(img_np,1)      # flip cols axis (L-R)
+img_pil = Image.fromarray(img_np)
+# Zero pad image, scale to 1024 x 1024, before sending to preprocess function
+# Mainly this first resize is done for comparison to outputs from NIH CXR8 dataset
+longer_side = max(img_pil.size)
+horizontal_padding = (longer_side - img_pil.size[0]) / 2
+vertical_padding = (longer_side - img_pil.size[1]) / 2
+img_pil = img_pil.crop(
+    (
+        -horizontal_padding,
+        -vertical_padding,
+        img_pil.size[0] + horizontal_padding,
+        img_pil.size[1] + vertical_padding
+    )
+)
+img_pil = img_pil.resize((1024,1024))
+img_tensor = preprocess(img_pil)
 img_y = img_tensor.unsqueeze(0).cpu()
 
 
@@ -232,10 +228,14 @@ cam_img = np.uint8(255 * cam_img)
 output_cam.append(cv2.resize(cam_img, (1024,1024)))
 
 # Write result
-img_orig = cv2.imread('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
-height, width, _ = img_orig.shape
+#img_orig = cv2.imread(img_file)
+# convert to openCV style np array
+img_cv = np.array(img_pil) 
+# Convert RGB to BGR 
+img_cv = img_cv[:, :, ::-1].copy() 
+height, width, _ = img_cv.shape
 heatmap = cv2.applyColorMap(cv2.resize(output_cam[0],(width, height)), cv2.COLORMAP_JET)
-result = heatmap * 0.3 + img_orig * 0.5
+result = heatmap * 0.3 + img_cv * 0.5
 cv2.imwrite("output.jpg", result)
 
 
