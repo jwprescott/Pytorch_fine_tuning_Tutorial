@@ -79,59 +79,15 @@ void run() {
   // skimage.img_as_float(skimage.io.imread(IMAGE_LOCATION)).astype(np.float32)
   auto image = cv::imread(FLAGS_file);  // CV_8UC3
 
-  // Output stats of original loaded image
-  double min, max;
-  cv::Scalar mean, stddev;
-  cv::minMaxLoc(image, &min, &max);
-  cv::meanStdDev(image, mean, stddev);
-  std::cout << "Orig image, normalized" << std::endl
-            << "Min: " << min << std::endl
-            << "Max: " << max << std::endl
-            << "Mean: " << mean[0] << std::endl
-            << "Std: " << stddev[0] << std::endl
-            << "Size: " << image.size() << std::endl
-            << "Channels: " << image.channels() << std::endl;
-
-  // Convert image to grayscale
-  cv::Mat imageGray;
-  cv::cvtColor(image, imageGray, CV_BGR2GRAY);
-  cv::cvtColor(imageGray, image, CV_GRAY2BGR);
-  cv::imwrite("image.jpg", image);
-  std::cout << "Grayscale image size: " << image.size() << std::endl;
-  std::cout << "Grayscale image channels: " << image.channels() << std::endl;
-
-  // Normalize image (scale 0-1, subtract per channel mean, divide by per channel
-  // standard deviation
-  //  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-  cv::normalize(image, image, 1, 0, cv::NORM_MINMAX);
-  image -= cv::Scalar(0.485, 0.456, 0.406);
-
-  // Channel-wise standard deviation scaling
-  // TODO: only applying single scalar division to all channels. Figure out
-  // how to apply separate scalar division to each channel.
-//  cv::Mat d(3,1,CV_32F);
-////  cv::Mat d(1,1,CV_32FC3,cv::Scalar(0.229, 0.224, 0.225));
-//  d.at<float>(0) = 0.229;
-//  d.at<float>(1) = 0.224;
-//  d.at<float>(2) = 0.225;
-//  cv::divide(image, d, image);
-  cv::divide(image, 0.229, image);
-
-//  image /= cv::Scalar(0.229, 0.224, 0.225);
-
-  // DEBUG: Output stats of normalized image
-  cv::minMaxLoc(image, &min, &max);
-  cv::meanStdDev(image, mean, stddev);
-  std::cout << "Orig image, normalized" << std::endl
-            << "Min: " << min << std::endl
-            << "Max: " << max << std::endl
-            << "Mean: " << mean[0] << std::endl
-            << "Std: " << stddev[0] << std::endl
-            << "Channels: " << image.channels() << std::endl;
+  // Need to rotate image taken with my android camera
+  if( FLAGS_file == "/home/prescott/Desktop/20180130_220842.jpg")
+  {
+      cv::Mat tmp;
+      cv::transpose(image, tmp);
+      cv::flip(tmp, image, 1);
+  }
 
   // scale/pad image to 224 x 224
-//  cv::Size scale(std::max(FLAGS_size * image.cols / image.rows, FLAGS_size),
-//                 std::max(FLAGS_size, FLAGS_size * image.rows / image.cols));
   float ratio = 224.0/std::max(image.rows, image.cols);
 
   cv::Mat imageResize, imageResizePad;
@@ -157,10 +113,89 @@ void run() {
             << std::endl;
 
   cv::Scalar value = cv::Scalar(0,0,0,255);
-  cv::copyMakeBorder(imageResize, imageResizePad, top, bottom, left, right, cv::BORDER_CONSTANT, value);
+  cv::copyMakeBorder(imageResize, image, top, bottom, left, right, cv::BORDER_CONSTANT, value);
+
+  // Save resized, padded image
+  cv::imwrite("image_resized_padded.jpg",image);
+
+
+  // Convert image to grayscale with 3 channels
+  cv::Mat imageGray;
+  cv::cvtColor(image, imageGray, CV_BGR2GRAY);
+  cv::cvtColor(imageGray, image, CV_GRAY2BGR);
+  cv::imwrite("image.jpg", image);
+  std::cout << "Grayscale image size: " << image.size() << std::endl;
+  std::cout << "Grayscale image channels: " << image.channels() << std::endl;
+
+  // DEBUG: Output stats of original loaded image
+  double min, max;
+  cv::Scalar mean, stddev;
+  cv::minMaxLoc(image, &min, &max);
+  cv::meanStdDev(image, mean, stddev);
+  std::cout << "Orig image" << std::endl
+            << "Min: " << min << std::endl
+            << "Max: " << max << std::endl
+            << "Mean: " << mean[0] << std::endl
+            << "Std: " << stddev[0] << std::endl
+            << "Size: " << image.size() << std::endl
+            << "Channels: " << image.channels() << std::endl;
+
+  // Normalize image (scale 0-1, subtract per channel mean, divide by per channel
+  // standard deviation
+  //  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+//  cv::normalize(image, image, 1, 0, cv::NORM_MINMAX);
+  image.convertTo(image,CV_32FC3);
+  cv::normalize(image, image, 1, 0, cv::NORM_MINMAX);
+  cv::minMaxLoc(image, &min, &max);
+  cv::meanStdDev(image, mean, stddev);
+  std::cout << "Orig image, normalized" << std::endl
+            << "Min: " << min << std::endl
+            << "Max: " << max << std::endl
+            << "Mean: " << mean[0] << std::endl
+            << "Std: " << stddev[0] << std::endl
+            << "Size: " << image.size() << std::endl
+            << "Channels: " << image.channels() << std::endl;
+
+  // Subtract mean of ImageNet images from normalized image
+  image -= cv::Scalar(0.485, 0.456, 0.406);
+  cv::minMaxLoc(image, &min, &max);
+  cv::meanStdDev(image, mean, stddev);
+  std::cout << "Orig image, normalized, ImageNet mean subtracted" << std::endl
+            << "Min: " << min << std::endl
+            << "Max: " << max << std::endl
+            << "Mean: " << mean[0] << std::endl
+            << "Std: " << stddev[0] << std::endl
+            << "Size: " << image.size() << std::endl
+            << "Channels: " << image.channels() << std::endl;
+
+  // Channel-wise standard deviation scaling
+  // TODO: only applying single scalar division to all channels. Figure out
+  // how to apply separate scalar division to each channel.
+//  cv::Mat d(3,1,CV_32F);
+////  cv::Mat d(1,1,CV_32FC3,cv::Scalar(0.229, 0.224, 0.225));
+//  d.at<float>(0) = 0.229;
+//  d.at<float>(1) = 0.224;
+//  d.at<float>(2) = 0.225;
+//  cv::divide(image, d, image);
+  cv::divide(image, 0.229, image);
+  cv::minMaxLoc(image, &min, &max);
+  cv::meanStdDev(image, mean, stddev);
+  std::cout << "Orig image, normalized, ImageNet mean subtracted, stddev scaled" << std::endl
+            << "Min: " << min << std::endl
+            << "Max: " << max << std::endl
+            << "Mean: " << mean[0] << std::endl
+            << "Std: " << stddev[0] << std::endl
+            << "Size: " << image.size() << std::endl
+            << "Channels: " << image.channels() << std::endl;
+
+  // Save image after all normalization
+  cv::Mat imageNormalizedComplete;
+  cv::normalize(image, imageNormalizedComplete, 255, 0, cv::NORM_MINMAX);
+  imageNormalizedComplete.convertTo(imageNormalizedComplete, CV_8UC3);
+  cv::imwrite("image_normalized_complete.jpg",imageNormalizedComplete);
 
   // convert to float
-  imageResizePad.convertTo(imageResizePad, CV_32FC3);
+//  imageResizePad.convertTo(imageResizePad, CV_32FC3);
 //  std::cout << "value range: ("
 //            << *std::min_element((float *)image.datastart,
 //                                 (float *)image.dataend)
@@ -171,12 +206,12 @@ void run() {
 
   // convert NHWC to NCHW
   vector<cv::Mat> channels(3);
-  cv::split(imageResizePad, channels);
+  cv::split(image, channels);
   std::vector<float> data;
   for (auto &c : channels) {
     data.insert(data.end(), (float *)c.datastart, (float *)c.dataend);
   }
-  std::vector<TIndex> dims({1, imageResizePad.channels(), imageResizePad.rows, imageResizePad.cols});
+  std::vector<TIndex> dims({1, image.channels(), image.rows, image.cols});
   TensorCPU tensor(dims, data, NULL);
 
   // Load model
@@ -292,6 +327,8 @@ void run() {
 
 // Eigen::MatrixXf saliency_map(1,49);
  Eigen::MatrixXf saliency_map;
+// Eigen::setNbThreads(4);
+
  saliency_map = mat_weights_classifier * mat_img_avg_pool;
 
  for(int i = 0; i < 49; ++i)
@@ -340,16 +377,19 @@ void run() {
                 << cm_saliency_matrix_opencv.channels() << std::endl;
 
 //      image = cv::imread(FLAGS_file);
-      imageResizePad.convertTo(imageResizePad, CV_8UC3);
-      cv::resize(imageResizePad, imageResizePad, scaleUp);
-      std::cout << "Resized image height, width, channels: " << imageResizePad.rows
-                << ", " << imageResizePad.cols << ", " << imageResizePad.channels() << std::endl;
+//      imageResizePad.convertTo(imageResizePad, CV_8UC3);
+      // Scale up, normalize image for final output
+      cv::normalize(image, image, 255, 0, cv::NORM_MINMAX);
+      cv::resize(image, imageResize, scaleUp);
+      imageResize.convertTo(imageResize, CV_8UC3);
+//      std::cout << "Resized image height, width, channels: " << imageResizePad.rows
+//                << ", " << imageResizePad.cols << ", " << imageResizePad.channels() << std::endl;
 
       cv::Mat result;
 
-      result = cm_saliency_matrix_opencv * 0.3 + imageResizePad * 0.5;
+      result = cm_saliency_matrix_opencv * 0.3 + imageResize * 0.5;
 
-      cv::imwrite("imageResizePad.jpg",imageResizePad);
+      cv::imwrite("image_resize.jpg",imageResize);
       cv::imwrite("saliency_heatmap.jpg", result);
 }
 
