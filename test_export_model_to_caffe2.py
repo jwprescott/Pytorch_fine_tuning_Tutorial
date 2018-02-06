@@ -18,7 +18,8 @@ import cv2
 
 # Try densenet model
 #torch_model = models.densenet121(pretrained=True)
-torch_model = torch.load('/home/prescott/Desktop/output_20180110_162914/model_best_acc_cpu.pth.tar')
+#torch_model = torch.load('/home/prescott/Desktop/output_20180110_162914/model_best_acc_cpu.pth.tar')
+torch_model = torch.load('/home/prescott/Desktop/output_20180205_112248/model_ft_cpu.pt')
 
 torch_model.train(False)
 
@@ -29,35 +30,39 @@ preprocess = transforms.Compose([
    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-#img_pil = Image.open('/home/prescott/Projects/tf-hemorrhage/images_curated/subarachnoid_hemorrhage/34TY8_0_0012.jpg')
 #img_pil = Image.open('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
-img_file = '/home/prescott/Desktop/20180130_220842.jpg'
-img_pil = Image.open(img_file)
-img_pil = img_pil.convert('L')  # make grayscale
-img_np = np.array(img_pil)
-img_np = np.stack((img_np,)*3) # make 3 channel grayscale
-img_np = np.moveaxis(img_np, 0, -1)
-if img_file == '/home/prescott/Desktop/20180130_220842.jpg':
-    img_np = np.moveaxis(img_np, 0,1)   # rotate android camera images from samsung phone
-    img_np = np.flip(img_np,1)      # flip cols axis (L-R)
-img_pil = Image.fromarray(img_np)
-# Zero pad image, scale to 1024 x 1024, before sending to preprocess function
-# Mainly this first resize is done for comparison to outputs from NIH CXR8 dataset
-longer_side = max(img_pil.size)
-horizontal_padding = (longer_side - img_pil.size[0]) / 2
-vertical_padding = (longer_side - img_pil.size[1]) / 2
-img_pil = img_pil.crop(
-    (
-        -horizontal_padding,
-        -vertical_padding,
-        img_pil.size[0] + horizontal_padding,
-        img_pil.size[1] + vertical_padding
-    )
-)
-img_pil = img_pil.resize((1024,1024))
-img_pil = Image.fromarray(img_np)
+img_pil = Image.open('/home/prescott/Desktop/output_20180205_112248/test_out_test/0_images_not_infection/00004534_008.jpg')
 img_tensor = preprocess(img_pil)
 x = Variable(img_tensor.unsqueeze(0))
+
+
+#img_file = '/home/prescott/Desktop/20180130_220842.jpg'
+#img_pil = Image.open(img_file)
+#img_pil = img_pil.convert('L')  # make grayscale
+#img_np = np.array(img_pil)
+#img_np = np.stack((img_np,)*3) # make 3 channel grayscale
+#img_np = np.moveaxis(img_np, 0, -1)
+#if img_file == '/home/prescott/Desktop/20180130_220842.jpg':
+    #img_np = np.moveaxis(img_np, 0,1)   # rotate android camera images from samsung phone
+    #img_np = np.flip(img_np,1)      # flip cols axis (L-R)
+#img_pil = Image.fromarray(img_np)
+## Zero pad image, scale to 1024 x 1024, before sending to preprocess function
+## Mainly this first resize is done for comparison to outputs from NIH CXR8 dataset
+#longer_side = max(img_pil.size)
+#horizontal_padding = (longer_side - img_pil.size[0]) / 2
+#vertical_padding = (longer_side - img_pil.size[1]) / 2
+#img_pil = img_pil.crop(
+    #(
+        #-horizontal_padding,
+        #-vertical_padding,
+        #img_pil.size[0] + horizontal_padding,
+        #img_pil.size[1] + vertical_padding
+    #)
+#)
+#img_pil = img_pil.resize((1024,1024))
+#img_pil = Image.fromarray(img_np)
+#img_tensor = preprocess(img_pil)
+#x = Variable(img_tensor.unsqueeze(0))
 
     
 #batch_size = 1    # just a random number
@@ -161,34 +166,37 @@ from IPython import display
 #img_y, img_cb, img_cr = img_ycbcr.split()
 
 # load the image
-#img = Image.open('/home/prescott/Projects/tf-hemorrhage/images_curated/subarachnoid_hemorrhage/34TY8_0_0012.jpg')
 #img = Image.open('/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg')
-img_file = '/home/prescott/Desktop/20180130_220842.jpg'
-img_pil = Image.open(img_file)
-img_pil = img_pil.convert('L')  # make grayscale
-img_np = np.array(img_pil)
-img_np = np.stack((img_np,)*3) # make 3 channel grayscale
-img_np = np.moveaxis(img_np, 0, -1)
-if img_file == '/home/prescott/Desktop/20180130_220842.jpg':
-    img_np = np.moveaxis(img_np, 0,1)   # rotate android camera images from samsung phone
-    img_np = np.flip(img_np,1)      # flip cols axis (L-R)
-img_pil = Image.fromarray(img_np)
-# Zero pad image, scale to 1024 x 1024, before sending to preprocess function
-# Mainly this first resize is done for comparison to outputs from NIH CXR8 dataset
-longer_side = max(img_pil.size)
-horizontal_padding = (longer_side - img_pil.size[0]) / 2
-vertical_padding = (longer_side - img_pil.size[1]) / 2
-img_pil = img_pil.crop(
-    (
-        -horizontal_padding,
-        -vertical_padding,
-        img_pil.size[0] + horizontal_padding,
-        img_pil.size[1] + vertical_padding
-    )
-)
-img_pil = img_pil.resize((1024,1024))
+img = Image.open('/home/prescott/Desktop/output_20180205_112248/test_out_test/0_images_not_infection/00004534_008.jpg')
 img_tensor = preprocess(img_pil)
 img_y = img_tensor.unsqueeze(0).cpu()
+
+#img_file = '/home/prescott/Desktop/20180130_220842.jpg'
+#img_pil = Image.open(img_file)
+#img_pil = img_pil.convert('L')  # make grayscale
+#img_np = np.array(img_pil)
+#img_np = np.stack((img_np,)*3) # make 3 channel grayscale
+#img_np = np.moveaxis(img_np, 0, -1)
+#if img_file == '/home/prescott/Desktop/20180130_220842.jpg':
+    #img_np = np.moveaxis(img_np, 0,1)   # rotate android camera images from samsung phone
+    #img_np = np.flip(img_np,1)      # flip cols axis (L-R)
+#img_pil = Image.fromarray(img_np)
+## Zero pad image, scale to 1024 x 1024, before sending to preprocess function
+## Mainly this first resize is done for comparison to outputs from NIH CXR8 dataset
+#longer_side = max(img_pil.size)
+#horizontal_padding = (longer_side - img_pil.size[0]) / 2
+#vertical_padding = (longer_side - img_pil.size[1]) / 2
+#img_pil = img_pil.crop(
+    #(
+        #-horizontal_padding,
+        #-vertical_padding,
+        #img_pil.size[0] + horizontal_padding,
+        #img_pil.size[1] + vertical_padding
+    #)
+#)
+#img_pil = img_pil.resize((1024,1024))
+#img_tensor = preprocess(img_pil)
+#img_y = img_tensor.unsqueeze(0).cpu()
 
 
 # Let's run the mobile nets that we generated above so that caffe2 workspace is properly initialized

@@ -18,13 +18,26 @@
 
 #include <fstream>
 
-CAFFE2_DEFINE_string(init_net, "/home/prescott/Projects/Pytorch_fine_tuning_Tutorial/init_net.pb",
+//CAFFE2_DEFINE_string(init_net, "/home/prescott/Projects/Pytorch_fine_tuning_Tutorial/init_net.pb",
+//                     "The given path to the init protobuffer.")
+//CAFFE2_DEFINE_string(predict_net, "/home/prescott/Projects/Pytorch_fine_tuning_Tutorial/predict_net.pb",
+//                     "The given path to the predict protobuffer.")
+CAFFE2_DEFINE_string(init_net, "/home/prescott/Projects/init_net.pb",
                      "The given path to the init protobuffer.")
-CAFFE2_DEFINE_string(predict_net, "/home/prescott/Projects/Pytorch_fine_tuning_Tutorial/predict_net.pb",
+CAFFE2_DEFINE_string(predict_net, "/home/prescott/Projects/predict_net.pb",
                      "The given path to the predict protobuffer.")
+
 //CAFFE2_DEFINE_string(file, "/home/prescott/Desktop/output_20180110_162914/test_out_test/1_images_infection/00023068_049.jpg", "The image file.")
-CAFFE2_DEFINE_string(file, "/home/prescott/Desktop/20180130_220842.jpg", "The image file.")
+CAFFE2_DEFINE_string(file, "/home/prescott/Desktop/output_20180205_112248/test_out_test/0_images_not_infection/00004534_008.jpg", "The image file.")
+
+//CAFFE2_DEFINE_string(file, "/home/prescott/Desktop/20180130_220842.jpg", "The image file.")
+//CAFFE2_DEFINE_string(file, "/home/prescott/Desktop/20180204_095945.jpg", "The image file.")
+//CAFFE2_DEFINE_string(file, "/home/prescott/Desktop/20180204_100050.jpg", "The image file.")
+
 // CAFFE2_DEFINE_string(classes, "res/imagenet_classes.txt", "The classes file.");
+
+
+
 CAFFE2_DEFINE_int(size, 224, "The image file.")
 
 // CAFFE2_DEFINE_string(init_net, "/home/prescott/Projects/caffe2_cpp_tutorial-master/script/res/squeezenet_init_net.pb",
@@ -80,43 +93,60 @@ void run() {
   auto image = cv::imread(FLAGS_file);  // CV_8UC3
 
   // Need to rotate image taken with my android camera
-  if( FLAGS_file == "/home/prescott/Desktop/20180130_220842.jpg")
+  if( FLAGS_file == "/home/prescott/Desktop/20180130_220842.jpg" ||
+      FLAGS_file == "/home/prescott/Desktop/20180204_095945.jpg" ||
+      FLAGS_file == "/home/prescott/Desktop/20180204_100050.jpg")
   {
       cv::Mat tmp;
       cv::transpose(image, tmp);
       cv::flip(tmp, image, 1);
   }
 
-  // scale/pad image to 224 x 224
-  float ratio = 224.0/std::max(image.rows, image.cols);
+  // Crop image to square, scale image to 224 x 224
+  int minDim = std::min(image.rows, image.cols);
+  cv::Rect roi(0,0,minDim-1,minDim-1);
 
-  cv::Mat imageResize, imageResizePad;
-  cv::resize(image, imageResize, cv::Size(), ratio, ratio, cv::INTER_CUBIC);
+  cv::Mat imageResize, imageCropped;
 
-  std::cout << "Resized image height, width: " << imageResize.rows
-            << ", " << imageResize.cols << std::endl;
+  imageCropped = image(roi);
 
-  int delta_w = 224 - imageResize.cols;
-  int delta_h = 224 - imageResize.rows;
-  int top = delta_h / 2;
-  int bottom = delta_h - (delta_h / 2);
-  int left = delta_w / 2;
-  int right = delta_w - (delta_w / 2);
+  float ratio = 224.0/minDim;
 
-  std::cout << "Delta_w, Delta_h, top, bottom, left, right: "
-            <<  delta_w << ", "
-            <<  delta_h << ", "
-            <<  top << ", "
-            <<  bottom << ", "
-            <<  left << ", "
-            <<  right << ", "
-            << std::endl;
+  cv::resize(imageCropped, image, cv::Size(), ratio, ratio, cv::INTER_CUBIC);
 
-  cv::Scalar value = cv::Scalar(0,0,0,255);
-  cv::copyMakeBorder(imageResize, image, top, bottom, left, right, cv::BORDER_CONSTANT, value);
+  // Save cropped, resized image
+  cv::imwrite("image_cropped_resized.jpg",image);
 
-  // Save resized, padded image
-  cv::imwrite("image_resized_padded.jpg",image);
+//  // scale/pad image to 224 x 224
+//  float ratio = 224.0/std::max(image.rows, image.cols);
+
+//  cv::Mat imageResize, imageResizePad;
+//  cv::resize(image, imageResize, cv::Size(), ratio, ratio, cv::INTER_CUBIC);
+
+//  std::cout << "Resized image height, width: " << imageResize.rows
+//            << ", " << imageResize.cols << std::endl;
+
+//  int delta_w = 224 - imageResize.cols;
+//  int delta_h = 224 - imageResize.rows;
+//  int top = delta_h / 2;
+//  int bottom = delta_h - (delta_h / 2);
+//  int left = delta_w / 2;
+//  int right = delta_w - (delta_w / 2);
+
+//  std::cout << "Delta_w, Delta_h, top, bottom, left, right: "
+//            <<  delta_w << ", "
+//            <<  delta_h << ", "
+//            <<  top << ", "
+//            <<  bottom << ", "
+//            <<  left << ", "
+//            <<  right << ", "
+//            << std::endl;
+
+//  cv::Scalar value = cv::Scalar(0,0,0,255);
+//  cv::copyMakeBorder(imageResize, image, top, bottom, left, right, cv::BORDER_CONSTANT, value);
+
+//  // Save resized, padded image
+//  cv::imwrite("image_resized_padded.jpg",image);
 
 
   // Convert image to grayscale with 3 channels
@@ -316,14 +346,14 @@ void run() {
   }
  std::cout << std::endl;
 
-//   // DEBUG: Make sure values/indices from weights_classifier and mat_weights_classifier match
-//   for(auto i = 0; i < weights_classifier.size(); ++i)
-//   {
-//       std::cout << "weights_classifier, mat_weights_classifier: "
-//                 << weights_classifier[i] << ", "
-//                 << mat_weights_classifier(i)
-//                 << std::endl;
-//   }
+// // DEBUG: Make sure values/indices from weights_classifier and mat_weights_classifier match
+// for(auto i = 0; i < weights_classifier.size(); ++i)
+// {
+//     std::cout << "weights_classifier, mat_weights_classifier: "
+//               << weights_classifier[i] << ", "
+//               << mat_weights_classifier(i)
+//               << std::endl;
+// }
 
 // Eigen::MatrixXf saliency_map(1,49);
  Eigen::MatrixXf saliency_map;
@@ -331,16 +361,16 @@ void run() {
 
  saliency_map = mat_weights_classifier * mat_img_avg_pool;
 
- for(int i = 0; i < 49; ++i)
- {
-     float mult_result = 0;
-     for(int j = 0; j < weights_classifier.size(); ++j)
-     {
-         mult_result += mat_weights_classifier(j) * mat_img_avg_pool(1024*i + j);
-     }
-     std::cout << "Here is result of multiplication of weights and average pool: "
-               << mult_result << std::endl;
- }
+// for(int i = 0; i < 49; ++i)
+// {
+//     float mult_result = 0;
+//     for(int j = 0; j < weights_classifier.size(); ++j)
+//     {
+//         mult_result += mat_weights_classifier(j) * mat_img_avg_pool(1024*i + j);
+//     }
+//     std::cout << "Here is result of multiplication of weights and average pool: "
+//               << mult_result << std::endl;
+// }
 
     // Reshape saliency map
     Eigen::Map<Eigen::MatrixXf> saliency_map_reshape(saliency_map.data(), 7, 7);
